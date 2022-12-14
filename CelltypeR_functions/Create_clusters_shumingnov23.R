@@ -4,8 +4,7 @@
 #Intrinsic stats       (Shuming)
 # # clust_stability    (Shuming)
 
-
-library(clusterSim) #new package for dbi
+library(clusterSim) #for dbi
 library(FlowSOM)
 library(flowCore)
 library(cluster) #for silhouette score
@@ -15,59 +14,12 @@ library(dplyr)
 library(ggplot2)
 library(clustree) #for clustree plot
 library(Rphenograph) #for phenograph
-
-
-
-# install.packages('flexclust') 
 library(flexclust)#for adjusted rand index
 library(ggplot2) #for the plot function
-
-input_path <- "/Users/shumingli/Documents/GitHub/PhenoID_single_cell_flow_cytometry_analysis/Old/preprocessing/outputs/prepro_outsaligned_transformed_flowset.csv"
-df <- read.csv(input_path)
-# subsample <- sample(nrow(df), 3000) #subsample
-# df <- df[subsample, ]
-df2 <- df %>% dplyr::select(c("AQP4", "CD24", "CD44", "CD184", "CD15",
-                              "HepaCAM", "CD29", "CD56", "O4", "CD140a",
-                              "CD133", "GLAST", "CD71"))
-
-tm <- t(df2)
-rownames(tm) <- colnames(df2)
-colnames(tm) <- rownames(df2)
-s <- CreateSeuratObject(tm)
-s <- AddMetaData(object=s, metadata=df$Batch, col.name = 'Batch')
-AB <- colnames(df2) # save antibody names for feature plotting later
-s <- ScaleData(s) # add to scale data slot
-print(DoHeatmap(s, group.by = "Batch", features = AB)) # check the data
-s <- RunPCA(s, features = AB, npcs = 12, approx = FALSE)
-
-#*shuming notes end
-
 
 ####################################################################################################
 
 
-
-# #*testing:
-# test1 <- explore_param(input = s, 
-#               cluster_method = c("phenograph"), 
-#               for.phenograph.and.louvain.k = c(20, 25, 30),
-#               save.plot = TRUE, 
-#               output_path = "/Users/shumingli/Desktop/nov4/")
-# test2 <- explore_param(input = s, 
-#                       cluster_method = c("flowsom"), 
-#                       for.flowsom.k = c(3, 4, 5),
-#                       save.plot = TRUE, 
-#                       output_path = "/Users/shumingli/Desktop/nov4/")
-# test3 <- explore_param(input = s, 
-#                        cluster_method = c("louvain"), 
-#                        for.phenograph.and.louvain.k = c(20, 25, 30),
-#                        for.louvain.resolution = c(0.1,0.2,0.3),
-#                        save.plot = TRUE, 
-#                        output_path = "/Users/shumingli/Desktop/nov4/")
-
-test$phenograph[[1]]
-
-#*end testing
 
 # explore_param
 # reads in csv files with flow cytometry experiments or seurat data object depending on arguments
@@ -76,8 +28,11 @@ test$phenograph[[1]]
 # select outputs, generates - UMAPS, heatmaps, clustree  : save to folder or put in global environ
 # creates list object to run stats
 
-explore_param <- function(input, 
+
+# input is a seurat object
+explore_param <- function(input, #for phenograph and louvain only
                           cluster_method, #takes a list
+                          df_input, #if input "flowsom", this is needed
                           for.flowsom.k = NULL, 
                           for.phenograph.and.louvain.k = NULL, 
                           for.louvain.resolution = NULL,
@@ -87,8 +42,8 @@ explore_param <- function(input,
   # if output_path is not given, set output_path to working directory 
   if(is.null(output_path)) {
     output_path <- getwd()
-    
   }
+  
   if (save.plot || save.stats) { 
     dir.create(file.path(output_path), showWarnings = FALSE)
     setwd(file.path(output_path))
@@ -97,24 +52,24 @@ explore_param <- function(input,
     lv <- NULL
   }
 
-  
   if ("flowsom" %in% cluster_method) {
     fs <- flowsom(input = input,
+                  df_input = df_input,
             for.flowsom.k = for.flowsom.k,
             save.stats = save.stats,
             save.plot = save.plot,
             output_path = output_path)
   }
   if ("phenograph" %in% cluster_method) {
-    pg <- phenograph(seu = input,
+    pg <- phenograph(input = input,
           for.phenograph.and.louvain.k = for.phenograph.and.louvain.k,
           output_path = output_path,
           save.stats = save.stats,
           save.plot = save.plot) 
   }
   if ("louvain" %in% cluster_method) {
-    lv <- louvain(seu = input, #seu object
-            kn = for.phenograph.and.louvain.k,
+    lv <- louvain(input = input, #seu object
+            for.phenograph.and.louvain.k = for.phenograph.and.louvain.k,
             resolutions = for.louvain.resolution,
             save.plot = save.plot, #option to save the graphs  
             save.stats = save.stats, #option to save stats list  
@@ -127,33 +82,25 @@ explore_param <- function(input,
 }
 
 
-#helper functions
-
-
-# test4 <- flowsom(input = s,
-#                 for.flowsom.k = c(3, 4, 5),
-#                 save.plot = TRUE,
-#                 output_path = "/Users/shumingli/Desktop/nov4/")
-# input <- s
-# for.flowsom.k <- c(3, 4, 5)
-
-
-#helper functions #2:
-flowsom <- function(input, #csv
+#helper functions #1:
+flowsom <- function(input, #seurat
+                    df_input, #the processed df2 file before being converted to seurat
                     for.flowsom.k,
                     save.stats = TRUE,
                     save.plot = FALSE,
                     output_path) {
+  
   clust_method <- "flowsom"
   # create the flowframe. If reading in a csv convert to flowset
-  frame <- new("flowFrame", exprs = as.matrix(df2)) #convert input to flowframe
+  frame <- new("flowFrame", exprs = as.matrix(df_input)) #convert input to flowframe
+  
   fs <- ReadInput(frame) #convert flowframe to flowsom object
   fs <- BuildSOM(fs) # build flowSOM object, no need for -1 because I cleaned the df about before making flowset
   fs <- BuildMST(fs) # build minimum spanning tree
   
   
   #subsampling for silhouette score, n=9000, if less than 9000 cells, use the full size 
-  m <- t(as.matrix(GetAssayData(object = seu, slot = "counts"))) 
+  m <- t(as.matrix(GetAssayData(object = input, slot = "counts"))) 
   row_n <- sample(1 : nrow(m), ifelse(nrow(m) > 9000, 9000, nrow(m)))
   dis <- daisy(m[row_n, ])  #dissimilarities distance
   # statsl <- vector() #stats list returned
@@ -168,16 +115,15 @@ flowsom <- function(input, #csv
   m <- as.matrix(df2) # create a matrix for later
   row_n <- sample(1:nrow(m), ifelse(nrow(m) > 9000, 9000, nrow(m))) 
   dis <- dist(m[row_n, ]) 
-  
   kn = round(sqrt(dim(df2)[1]))
-  seu <- FindNeighbors(seu, dims = 1:12, k = kn)
-  seu <- RunUMAP(seu, dims = 1:12, n.neighbors = kn)
+  input <- FindNeighbors(input, dims = 1:12, k = kn)
+  input <- RunUMAP(input, dims = 1:12, n.neighbors = kn)
   
   # save feature plots UMAP
   if(save.plot) {
-    pdf(paste(clust_method, "UMAPfeatures_kn", kn, ".pdf", sep = ""), 
+    pdf(paste(output_path, clust_method, "UMAPfeatures_kn", kn, ".pdf", sep = ""), 
         width = 20, height = 10)
-    print(FeaturePlot(seu, features = AB,
+    print(FeaturePlot(input, features = rownames(input),
                       slot = 'scale.data',
                       min.cutoff = 'q1',
                       max.cutoff ='99',
@@ -189,31 +135,31 @@ flowsom <- function(input, #csv
   for (i in for.flowsom.k){
     
     flowSOMcluster <- metaClustering_consensus(fs$map$codes, k = i, seed=42)
-    print("flowsom test1")
+    
     clust_name = paste('FlowSom.k.', i, sep="")
     
     # add the cluster ID into seurat object to visualize
-    seu <- AddMetaData(object = seu,
+    input <- AddMetaData(object = input,
                        metadata = flowSOMcluster[fs$map$mapping[, 1]],
                        col.name = paste('FlowSom.k.', i, sep="")) #clustering name
     number.clusters <- length(unique(flowSOMcluster[fs$map$mapping[,1]]))
-    print("flowsom test2")
+    
     # save feature plots of this UMAP
     if (save.plot) {
-      png(paste(clust_method, "UMAPclusters_k", i, ".png", sep = ""))
-      print(DimPlot(seu, reduction = "umap", repel = TRUE, label = TRUE, 
+      png(paste(output_path, clust_method, "UMAPclusters_k", i, ".png", sep = ""))
+      print(DimPlot(input, reduction = "umap", repel = TRUE, label = TRUE, 
                     group.by = clust_name)) # will automatically group by active ident
       dev.off()
-      print("flowsom test3")
+      
       # heatmap
       heatmap_name = paste("Heatmapclusters_k",i,".png",sep="")
       png(paste(output_path, clust_method, heatmap_name, sep = ""), 
           width = 600, height = 500)
-      print(DoHeatmap(seu, features = AB,group.by = clust_name))
+      print(DoHeatmap(input, features = rownames(input), group.by = clust_name))
       dev.off()
-      print("flowsom test4")
+     
     }
-    
+   
     # add stats
     stats_ls <- c(stats_ls, 
                   kn, #kn 
@@ -222,46 +168,42 @@ flowsom <- function(input, #csv
                   mean(silhouette(flowSOMcluster[fs$map$mapping[, 1]][row_n], dis)[, 3]), #silhouette score
                   calinhara(m, flowSOMcluster[fs$map$mapping[, 1]], cn = i), #Calinski-Harabasz index
                   index.DB(df2, as.numeric(flowSOMcluster[fs$map$mapping[, 1]]))$DB) # Davies–Bouldin index
-    print("flowsom test5")
+    
     cnl <- c(cnl, paste("clusters_krange_", i, "_", sep = "")) #update column name lists
-    seul <- c(seul, seu) #rds list of seu objects to be returned
+    seul <- c(seul, input) #rds list of seu objects to be returned
   }
-  print("flowsom test6")
+ 
   #make statsl into matrix
   stats_ls <- matrix(stats_ls, ncol = 6, byrow = TRUE)
   colnames(stats_ls) <- c("kn", "krange", "nc", "si", "ch", "db")
-  print("flowsom test7")
+ 
   if (save.stats) {
     saveRDS(stats_ls, paste(output_path, clust_method, 'statslist.Rds', sep = ""))
   }
   
-  
-  print("flowsom test8")
   # save feature plots of this UMAP
   if (save.plot) {
-    # make clustree plot
-    pdf(paste(output_path, clust_method, 'Clustree.pdf',sep = ""), width = 8, height = 8)
-    print(clustree(seu, prefix ='FlowSom.k.'))
-    dev.off()
-    print("flowsom test9")
+    if(length(for.flowsom.k) > 2) {
+      # make clustree plot
+      pdf(paste(output_path, clust_method, 'Clustree.pdf',sep = ""), width = 8, height = 8)
+      print(clustree(input, prefix ='FlowSom.k.'))
+      dev.off()
+    }
     # save the UMAP with cell types
     pdf(paste(output_path, clust_method,'UMAPcelltype.pdf',sep=""),width =8, height = 6)
-    print(DimPlot(seu,group.by = 'Batch'))
+    print(DimPlot(input, group.by = 'Batch'))
     dev.off()
-    print("flowsom test10")
   }
   
   if (save.stats) { # save the stats
     stats_ls <- matrix(stats_ls, ncol = 6, byrow = TRUE)
     colnames(stats_ls) <- c("kn", "resolution", "nc", "si", "ch", "db")
-    saveRDS(stats_ls, paste(clust_method, 'statslist.Rds', sep = ""))
-    print("flowsom test11")
+    saveRDS(stats_ls, paste(output_path, clust_method, 'statslist.Rds', sep = ""))
   } 
   
   #return seu lists:
   names(seul) <- cnl
-  saveRDS(seul, paste(clust_method, 'seul.Rds', sep = ""))
-  print("flowsom test12")
+  saveRDS(seul, paste(output_path, clust_method, 'seul.Rds', sep = ""))
   if (save.stats) {
     # stats_plot(data.frame(stats_ls), output_path, clust_method)
     return(list(stats_ls, seul))} 
@@ -270,19 +212,9 @@ flowsom <- function(input, #csv
     }
 }
 
-# #*test:
-# test <- phenograph(seu = s, 
-#         for.phenograph.and.louvain.k = c(25, 30, 35),
-#         save.plot = TRUE,
-#         output_path = "/Users/shumingli/Desktop/nov4/")
-# seu <- s
-# for.phenograph.and.louvain.k = c(25, 30, 35)
-# save.plot = TRUE
-# save.stats = TRUE
-# output_path = "/Users/shumingli/Desktop/nov4/"
 
 #helper functions #3:
-phenograph <- function(seu,
+phenograph <- function(input,
                        for.phenograph.and.louvain.k,
                        output_path,
                        save.stats = TRUE,
@@ -293,7 +225,7 @@ phenograph <- function(seu,
 
 
   #subsampling for silhouette score, n=9000, if less than 9000 cells, use the full size 
-  m <- t(as.matrix(GetAssayData(object = seu, slot = "counts"))) 
+  m <- t(as.matrix(GetAssayData(object = input, slot = "counts"))) 
   row_n <- sample(1 : nrow(m), ifelse(nrow(m) > 9000, 9000, nrow(m)))
   dis <- daisy(m[row_n, ])  #dissimilarities distance
 
@@ -307,76 +239,45 @@ phenograph <- function(seu,
   # we also only need to plot the features once
   # file name
   UMAP_name = paste("UMAPfeatures_kn", for.phenograph.and.louvain.k, ".pdf", sep = "") #*weird name 271, check later
-  # print(UMAP_name) #testing
   
   # save feature plots UMAP
   pdf(paste(output_path, clust_method, UMAP_name,sep=""),width =20, height = 10)
-  print(FeaturePlot(seu, features = AB,slot = 'scale.data', 
+  print(FeaturePlot(input, features = rownames(input), slot = 'scale.data', 
                     min.cutoff = 'q1', max.cutoff ='99',label.size = 1)+ 
           theme(plot.title = element_text(size = 0.1)))
   dev.off()
-  print("test7")
+  
   # we also want to see the batch on the UMAP
   pdf(paste(output_path, clust_method, UMAP_name,sep = ""), width =8, height = 6)
-  print(DimPlot(seu, group.by = 'Batch'))
+  print(DimPlot(input, group.by = 'Batch'))
   dev.off()
-  print("test8")
-  
-  # #subsampling for silhouette score, n=1000, can make n bigger if needed
-  # row_n <- sample(1:nrow(m), 1000)
-  # dis <- dist(m[row_n,])
-  
-  print("test9")
-  
-  ############################# loop to explore parameters ########################################
-  # kn = c(25,50,75,100,125,150,175,200,225,250,300,350,400,450,500)
-  # kn = c(25,50,75,100,125,150,175,200,225,250,275,300)
-  # larger kn fewer clusters in general but not always
-  #kn = c(50,500)
-  # save a data object for each kn - will only keep temporarily
-  # the clusters will write over with each new kn
+ 
   
   for (i in for.phenograph.and.louvain.k){
-    # kn_umap = round(sqrt(dim(df2)[1]))
-    seu <- FindNeighbors(seu, dims = 1:12, k.param = i) #*was outside of the loop with a calculated kn of 271, i moved it in, check later
-    print("test5")
-    seu <- RunUMAP(seu, dims = 1:12, n.neighbors = i) #* same here, check later
-    print("test6")
-    # save feature plots of this UMAP
-    # just for testing print
-    
+    input <- FindNeighbors(input, dims = 1:12, k.param = i)
+    input <- RunUMAP(input, dims = 1:12, n.neighbors = i) 
+
     ### run phenograph clustering
     Rphenograph_out_flow <- Rphenograph(m, k = i)
     phenocluster <- factor(membership(Rphenograph_out_flow[[2]]))
-    print("test10")
     clust_name = paste('Pheno.kn.',i,sep="")
     # add the cluster ID into seurat object to visualize
-    seu <- AddMetaData(object=seu, phenocluster, col.name = clust_name)
-    print("test11")
+    input <- AddMetaData(object = input, phenocluster, col.name = clust_name)
     number.clusters <- length(unique(phenocluster))
-    print("test12")
     ### make umap
     
     if (save.plot) {
       UMAP_name = paste("UMAPclusters_kn",i,".pdf",sep="")
-      print(UMAP_name) #testing
       pdf(paste(output_path, clust_method, UMAP_name,sep=""),width =20, height = 10)
       # save UMAP grouped
-      print(DimPlot(seu, reduction = "umap", repel = TRUE, label = TRUE, group.by = clust_name)) # will automatically group by active ident
+      print(DimPlot(input, reduction = "umap", repel = TRUE, label = TRUE, group.by = clust_name)) # will automatically group by active ident
       dev.off()
       # heatmap
-      heatmap_name = paste("Heatmapclusters_kn",i,".pdf",sep="")
-      # testing
-      pdf(paste(output_path,clust_method,heatmap_name,sep=""),width =25, height = 10)
-      print(DoHeatmap(seu, features = AB, group.by = clust_name)) #doesn't work when the sample is smaller
+      pdf(paste(output_path,clust_method, paste("Heatmapclusters_kn",i,".pdf", sep=""),sep=""),width =25, height = 10)
+      print(DoHeatmap(input, features = rownames(input), group.by = clust_name)) #doesn't work when the sample is smaller
       dev.off()
     }
-    print("test13")
-    #### add stats
-    # "kn", "nc","si", "ch", "db"
-    # get the cluster indexes
-    # phenocluster <- factor(membership(Rphenograph_out_flow[[2]]))
-    print("test14")
+
     stats_ls <- c(stats_ls, 
                   i, #kn
                   number.clusters, #number of clusters
@@ -384,37 +285,35 @@ phenograph <- function(seu,
                   calinhara(m,phenocluster,cn=i), #Calinski-Harabasz index
                   index.DB(df2, as.numeric(phenocluster))$DB # Davies–Bouldin index
     )
-    print("test15")
+    
     cnl <- c(cnl, paste("clusters_kn_", i, sep = "")) #update column name lists
-    seul <- c(seul, seu) #rds list of seu objects to be returned
+    seul <- c(seul, input) #rds list of seu objects to be returned
   }
   
-  if (save.plot) {
+  if (save.plot && (length(for.flowsom.k) > 2)) {
     # make clustree plot
+    if(length(for.flowsom.k) > 2) 
     pdf(paste(output_path, clust_method,'Clustree.pdf',sep=""),width =15, height = 10)
-    print(clustree(seu, prefix ='Pheno.kn.'))
+    print(clustree(input, prefix ='Pheno.kn.'))
     dev.off()
-    print("test16")
   }
   
   if (save.stats) { # save the stats
     stats_ls <- matrix(stats_ls, ncol = 5, byrow = TRUE)
     colnames(stats_ls) <- c("kn", "nc","si", "ch", "db")
-    saveRDS(stats_ls, paste(clust_method, 'statslist.Rds', sep = ""))
-    print("test17")
+    saveRDS(stats_ls, paste(output_path, clust_method, 'statslist.Rds', sep = ""))
   }
   
   #return seu lists:
   names(seul) <- cnl
-  saveRDS(seul, paste(clust_method, 'seul.Rds', sep = ""))
-  
+  saveRDS(seul, paste(output_path, clust_method, 'seul.Rds', sep = ""))
   if (save.stats) {return(list(stats_ls, seul))} else {return(seul)}
 }
 
 
 #helper functions #4:
-louvain <- function(seu, #seu object
-                    kn,
+louvain <- function(input, #seu object
+                    for.phenograph.and.louvain.k,
                     resolutions,
                     save.plot = FALSE, #option to save the graphs  
                     save.stats = TRUE, #option to save stats list  
@@ -432,7 +331,7 @@ louvain <- function(seu, #seu object
   } 
   if (save.stats) {
     #subsampling for silhouette score, n=9000, if less than 9000 cells, use the full size 
-    m <- t(as.matrix(GetAssayData(object = seu, slot = "counts"))) 
+    m <- t(as.matrix(GetAssayData(object = input, slot = "counts"))) 
     row_n <- sample(1 : nrow(m), ifelse(nrow(m) > 9000, 9000, nrow(m)))
     dis <- daisy(m[row_n, ])  #dissimilarities distance
     statsl <- vector() #stats list returned
@@ -445,16 +344,16 @@ louvain <- function(seu, #seu object
   # In the loop
   # save a data object for each kn - will only keep temporarily
   # the clusters will write over with each new kn
-  for (i in kn){
-    seu <- FindNeighbors(seu, dims = 1:12, k.param = i)
-    seu <- RunUMAP(seu, dims = 1:12, n.neighbors = i)
+  for (i in for.phenograph.and.louvain.k){
+    input <- FindNeighbors(input, dims = 1:12, k.param = i)
+    input <- RunUMAP(input, dims = 1:12, n.neighbors = i)
     
     # save feature plots of this UMAP
     if (save.plot) {
-      pdf(paste(clust_method, "UMAPfeatures_kn", i, ".pdf", sep = ""),
+      pdf(paste(output_path, clust_method, "UMAPfeatures_kn", i, ".pdf", sep = ""),
           width =20, height = 10)
-      print(FeaturePlot(seu,
-                        features = AB,
+      print(FeaturePlot(input,
+                        features = rownames(input),
                         slot = 'scale.data',
                         min.cutoff = 'q1',
                         max.cutoff ='99',
@@ -465,13 +364,13 @@ louvain <- function(seu, #seu object
       # look at batches
       pdf(paste(output_path, clust_method, "UMAPbatches_kn", i, ".pdf", sep = ""),
           width = 20, height = 10)
-      print(DimPlot(seu, group.by = 'Batch', label.size = 1))
+      print(DimPlot(input, group.by = 'Batch', label.size = 1))
       dev.off()
     }
     
     for (j in resolutions) {
-      seu <- FindClusters(seu, resolution = j)
-      louvainCluster <- seu@meta.data$seurat_clusters
+      input <- FindClusters(input, resolution = j)
+      louvainCluster <- input@meta.data$seurat_clusters
       
       #stats
       if (save.stats) {
@@ -490,53 +389,47 @@ louvain <- function(seu, #seu object
         }
       } 
       if (save.plot) {# make UMAP grouped plots
-        pdf(paste(clust_method, "UMAPclusters_kn", i, "_res_", j, ".pdf", sep = ""),
+        pdf(paste(output_path, clust_method, "UMAPclusters_kn", i, "_res_", j, ".pdf", sep = ""),
             width = 15, height = 10)
-        print(DimPlot(seu, reduction = "umap", repel = TRUE, label = TRUE)) # will automatically group by active ident
+        print(DimPlot(input, reduction = "umap", repel = TRUE, label = TRUE)) # will automatically group by active ident
         dev.off()
         
         # heatmap
-        pdf(paste(clust_method, "Heatmapclusters_kn", i, "_res_", j, ".pdf", sep = ""),
+        pdf(paste(output_path, clust_method, "Heatmapclusters_kn", i, "_res_", j, ".pdf", sep = ""),
             width = 15, height = 10)
-        print(DoHeatmap(seu, features = AB, size = 10)+
+        print(DoHeatmap(input, features = rownames(input), size = 10)+
                 theme(text = element_text(size = 30)))
         dev.off()
       }
       cnl <- c(cnl, paste("clusters_kn_", i, "_res_", j, sep = "")) #update column name lists
-      seul <- c(seul, seu) #rds list of seu objects to be returned
+      seul <- c(seul, input) #rds list of seu objects to be returned
     }
     #outside of resolution loop, in kn loop now:
     if (save.plot & (length(resolutions) > 1)) {
       # run clustree
-      pdf(paste(clust_method, "kn", i, 'Clustree.pdf', sep = ""),
+      pdf(paste(output_path, clust_method, "kn", i, 'Clustree.pdf', sep = ""),
           width = 15, height = 10)
-      print(clustree(seu, prefix ='RNA_snn_res.'))
+      print(clustree(input, prefix ='RNA_snn_res.'))
       dev.off()
     }
-    # # save seurat object
-    # if (!save.plot) {
-    #   saveRDS(seu, paste(input_name,
-    #                      clust_method,
-    #                      "SeuratObject", i, ".Rds", sep = ""))
-    # }
+
   }
   #outside of kn loop
   if (save.stats) { # save the stats
-    statsl <- matrix(stats_ls, ncol = 6, byrow = TRUE)
-    colnames(statsl) <- c("kn", "resolution", "nc", "si", "ch", "db")
-    saveRDS(statsl, paste(clust_method, 'statslist.Rds', sep = ""))
+    stats_ls <- matrix(statsl, ncol = 6, byrow = TRUE)
+    colnames(stats_ls) <- c("kn", "resolution", "nc", "si", "ch", "db")
+    saveRDS(stats_ls, paste(output_path, clust_method, 'statslist.Rds', sep = ""))
   } 
   #return seu lists:
   names(seul) <- cnl
-  saveRDS(seul, paste(clust_method, 'seul.Rds', sep = ""))
+  saveRDS(seul, paste(output_path, clust_method, 'seul.Rds', sep = ""))
   
-  if (save.stats) {return(list(statsl, seul))} else {return(seul)}
+  if (save.stats) {return(list(stats_ls, seul))} else {return(seul)}
 }
 
 
 
 ####################################################################################################
-
 
 #Intrinsic stats
 # takes in a dataframe or list of statistics
@@ -739,14 +632,6 @@ stats_plot <- function(stats_ls,
 # calculates the mean and standard deviation of the number of clusters and the RI for each resoloution
 # outputs a table and plot of the results
 
-#*input is s for this one
-# #*test:
-# df <- s
-# resolutions <- c(0.1, 0.2)
-# kn <- c(20, 25)
-# n <- 3
-# rdf <- Rand_index(df, resolutions, kn, n)
-
 
 Rand_index <- function(input,
                        resolutions,
@@ -754,10 +639,8 @@ Rand_index <- function(input,
                        n = 100, #number of iterations
                        output_path = NULL  #if null, will not save seul, ril, ncl, rdf
 ) {
-  
   #list of random integers
   rn_ls <- round(runif(n, min = 0, max = 100000), 0)
-  
   #final df with mean sd rand index and nc
   rdf <- data.frame(matrix(ncol = 8, nrow = 0))
   colnames(rdf) <- c('kn', 'resolution', 
@@ -766,24 +649,15 @@ Rand_index <- function(input,
   
   #helper functions:
   hp1 <- function(x) { #store n repeats of the same ixj clustering
-    seu <- FindClusters(seu, random.seed = rn_ls[x], resolution = j)
-    return(Idents(object = seu))
+    input <- FindClusters(input, random.seed = rn_ls[x], resolution = j)
+    return(Idents(object = input))
   }
   
   #find rand index between every 2 elements in a list, no repetition 
-  #(ex: 12, 21), no same number (ex: 11, 22):
+  #(ex: 1-2, 2-1) or same number (ex: 1-1, 2-2):
   hp2 <- function(x) { 
-    #1. this only caluclates ari, no subsampling needed:
     ri<-randIndex(table(as.numeric(seul[, x[1]]), 
                         as.numeric(seul[, x[2]])))
-    
-    ##2. this calculates ari and ri, but it's slowers:
-    # ri <- comPart(unlist(seu[[paste("repeat_", x[1], sep = "")]]), 
-    # unlist(seu[[paste("repeat_", x[2], sep = "")]]), type=c("ARI","RI"))
-    
-    ##3. this is the fossol function, toooo slow, and has to subsample:
-    # ri <- rand.index(as.numeric(seu@meta.data[row_n, paste("repeat_", x[1], sep = "")]), 
-    # as.numeric(seu@meta.data[row_n, paste("repeat_", x[2], sep = "")]))
     return(ri)
   }
   
@@ -793,19 +667,18 @@ Rand_index <- function(input,
   #main loops:
   for(i in kn) {
     #shuming note: why dims=12 here? 
-    seu <- FindNeighbors(seu, dims = 1:12, k.param = i) 
-    seu <- RunUMAP(seu, dims = 1:12, n.neighbors = i)
+    input <- FindNeighbors(input, dims = 1:12, k.param = i) 
+    input <- RunUMAP(input, dims = 1:12, n.neighbors = i)
+   
     for (j in resolutions) {
       seul <- sapply(1:n, hp1) #list of n repeats of clustering (Ident(seu) object)
       ncl <- apply(seul, 2, hp3) #list of number of clustering 
       ril <- apply(t(combn(1:n, 2)), 1, hp2) #list of rand index
-      
       if (!is.null(output_path)) {
         saveRDS(seul,paste(output_path, "seu_ls_kn", i, "_j", j, ".Rds",sep=""))
         saveRDS(ncl,paste(output_path, "nc_ls_kn", i, "_j", j, ".Rds",sep=""))
         saveRDS(ncl,paste(output_path, "ri_ls_kn", i, "_j", j, ".Rds",sep=""))
       }
-      
       rdf <-rbind(rdf, list(
         kn = i, resolution = j,
         meanri = mean(ril), medianri = median(ril), sdri = sd(ril), 
@@ -848,5 +721,4 @@ plot_randindex <- function (
   
   return(p)
 }
-
 

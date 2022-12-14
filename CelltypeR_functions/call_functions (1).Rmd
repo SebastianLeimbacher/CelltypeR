@@ -1,0 +1,141 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+source("Create_clusters_shumingnov23.R")
+source("Annotate_Clusters_Shumingupdatednov6.R")
+```
+
+
+```{r}
+# #preprocessing function in Create_clusters
+# #Shuming note: I happened to write it as a function but don't think we should put it in celltypeR
+# 
+# # choose your antibodies
+# # input is a flow cytometry csv and a list of antibody names
+# # output is a seurat object
+# preprocess_cluster <- function(input_path,
+#                                antibodies) {
+#   df <- read.csv(input_path)
+#   subsample <- sample(nrow(df), 3000) #subsample for testing only
+#   df <- df[subsample, ] #subsample for testing only
+#   df2 <- df %>% dplyr::select(all_of(antibodies))
+#   tm <- t(df2)
+#   rownames(tm) <- colnames(df2)
+#   colnames(tm) <- rownames(df2)
+#   s <- CreateSeuratObject(tm)
+#   s <- AddMetaData(object=s, metadata=df$Batch, col.name = 'Batch')
+#   s <- ScaleData(s) # add to scale data slot
+#   print(DoHeatmap(s, group.by = "Batch", features = antibodies, size = 2)) # check the data
+#   s <- RunPCA(s, features = antibodies, npcs = 12, approx = FALSE)
+#   return(s)
+# }
+# 
+# s <- preprocess_cluster(input_path = input_path, 
+#                         cluster_method = "flowsom",
+#                         antibodies = c("AQP4", "CD24", "CD44", "CD184", "CD15",
+#                               "HepaCAM", "CD29", "CD56", "O4", "CD140a",
+#                               "CD133", "GLAST", "CD71")) 
+
+#preprocessing:
+input_path <- "/Users/shumingli/Documents/GitHub/PhenoID_single_cell_flow_cytometry_analysis/Old/preprocessing/outputs/prepro_outsaligned_transformed_flowset.csv"
+antibodies <- c("AQP4", "CD24", "CD44", "CD184", "CD15",
+                              "HepaCAM", "CD29", "CD56", "O4", "CD140a",
+                              "CD133", "GLAST", "CD71")
+
+df <- read.csv(input_path)
+# subsample <- sample(nrow(df), 3000) #subsample for testing only
+# df <- df[subsample, ] #subsample for testing only
+
+df2 <- df %>% dplyr::select(all_of(antibodies))
+tm <- t(df2)
+rownames(tm) <- colnames(df2)
+colnames(tm) <- rownames(df2)
+s <- CreateSeuratObject(tm)
+s <- AddMetaData(object=s, metadata=df$Batch, col.name = 'Batch')
+s <- ScaleData(s) # add to scale data slot
+print(DoHeatmap(s, group.by = "Batch", features = antibodies, size = 2)) # check the data
+s <- RunPCA(s, features = antibodies, npcs = 12, approx = FALSE)
+```
+
+
+
+
+```{r}
+#in Create_clusters
+#helper functions #1
+test1 <- flowsom(input = s, 
+                 df_input = df2,
+                 for.flowsom.k = c(3, 4), 
+                 save.stats = TRUE, 
+                 save.plot = TRUE, 
+                 output_path = "/Users/shumingli/Desktop/nov4/")
+
+test2 <- phenograph(input = s, 
+                 for.phenograph.and.louvain.k = c(20, 25, 30),
+                 save.stats = TRUE, 
+                 save.plot = TRUE, 
+                 output_path = "/Users/shumingli/Desktop/nov4/")
+
+test3 <- louvain(input = s, 
+                 for.phenograph.and.louvain.k = c(20, 25, 30),
+                 resolutions = c(0.1, 0.2),
+                 save.stats = TRUE, 
+                 save.plot = TRUE, 
+                 output_path = "/Users/shumingli/Desktop/nov4/")
+
+test4 <- Rand_index(input = s,
+           resolutions = c(0.1, 0.2),
+           kn = c(20, 25),
+           n = 6, #number of iterations
+           output_path = "/Users/shumingli/Desktop/nov4/")
+
+```
+
+
+```{r}
+#main function in Create_clusters:
+test5 <- explore_param(input = s, 
+                       cluster_method = c("flowsom", "phenograph", "louvain"),
+                       df_input = df2,
+                       for.flowsom.k = c(3), 
+                       for.phenograph.and.louvain.k = c(20),
+                       for.louvain.resolution = c(0.1),
+                       save.stats = TRUE, 
+                       save.plot = TRUE, 
+                       output_path = "/Users/shumingli/Desktop/nov4/")
+
+
+```
+
+
+```{r}
+# in Annotate_Clusters CAM
+
+test <- read.csv("/Users/shumingli/Documents/GitHub/PhenoID_single_cell_flow_cytometry_analysis/Old/preprocessing/outputs/prepro_outstransformed_flowset.csv")
+reference <- read.csv("/Users/shumingli/Documents/GitHub/PhenoID_single_cell_flow_cytometry_analysis/Old/correlation/ReferenceMatrix9celltypesOrdered.csv")
+
+#fix reference: replace NA in [epithelial, 04] with the mean expression of 04 in other cell types
+reference[9,"O4"] <- mean(reference[1:8, "O4"])
+
+
+test6 <- find_correlation(test = test, 
+                          reference = reference, 
+                          min_corr = 0.1, 
+                          min_diff = 0.05)
+
+test7 <- plot_corr(test6)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
