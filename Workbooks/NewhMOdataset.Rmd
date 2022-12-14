@@ -1,0 +1,331 @@
+---
+title: "May 10th and June 10th new hMOs"
+output: html_notebook
+---
+
+Set up the workspace
+
+```{r}
+
+require("flowCore") #Used for reading the data
+require("ggplot2")
+require("ggridges") #visualization
+require("stringr") #set of functions to manipulate strings type in order to have nice titles
+require("rlist") #set of functions that allows to easily manipulate lists
+require("reshape2") #visualization
+require("flowStats") #Alignment functions
+require("scales") #scale colour intensity for visualization
+require("dplyr")
+require("Seurat")
+library(randomForest)
+library('data.table')
+# library("CelltypeR")
+#source("/Users/rhalenathomas/GITHUB/CelltypeR/CelltypeR_functions/Preprocessing.R")
+
+
+```
+
+Preprocessing hMO datasets.  Live single cells gated in FlowJo
+
+1. Set pathways
+
+```{r}
+
+input_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/GatingPlanExperiment/May10June10_livegating/"
+
+output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/FlowDataFiles/PresortingMay10June10/"
+
+write_fcs_files <- TRUE #Set to true to write fcs files at each step (subsampled, transformed, aligned and scaled) - recommended 
+
+#Create output folder if it's not already created
+if(dir.exists(output_path)==FALSE){ #check
+  dir.create(output_path) #create directory
+}
+
+
+
+
+```
+
+
+2. Make flowset object
+
+```{r}
+
+flowset <- read.flowSet(path=input_path) #Create a flowset object
+
+# see if each dataset can be read in separately or if the JuneGating has a problem. 
+# Somehow May and June might not be 
+flowset1 <- read.flowSet(path="/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/GatingPlanExperiment/livegatingMay10/")
+
+flowset2 <- read.flowSet(path="/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/GatingPlanExperiment/livegatingJune10/")
+
+flowset3 <- fsc_to_df("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/GatingPlanExperiment/May10June10_livegating/")  
+sampleNames(flowset1)
+sampleNames(flowset2)
+# for some when reading in both file sets together I get an error
+# either wrong dimension or wrong type 
+
+# rename samples 
+sampleNames(flowset1) <- c("B1_M10_PBS","B1_M10_TRIS","B2_M10_PBS","B2_M10_TRIS")
+sampleNames(flowset1)
+
+sampleNames(flowset2) <- c("B1_J10_PBS_R1","B1_J10_PBS_R2","B1_J10_PBS_R3")
+sampleNames(flowset2) 
+
+```
+
+
+Check the data object
+
+
+```{r}
+
+flowset <- flowset1
+flowset <- flowset2
+plotdensity_flowset <- function(flowset){ ggplot(melt(lapply(as.list(flowset@frames),function(x){x=as.data.frame(x@exprs)})), aes(x=value,y=L1,fill=L1)) + geom_density_ridges(alpha=.4,verbose=FALSE) +facet_wrap(~variable)+theme_light()} 
+
+plotdensity_flowset(flowset)
+
+```
+
+try to fix the align function
+
+```{r}
+##### these are for flowset1
+#### need to change this function to detect peaks or at least have the user add the column number
+colnames(transformed_flowset)
+normtr=gaussNorm(transformed_flowset,colnames(transformed_flowset)[c(1,3,9:length(colnames(transformed_flowset))-1)],max.lms = 2,peak.density.thr = 0.001)
+
+
+expbe_norm2=normtr$flowset
+normtr=gaussNorm(expbe_norm2,colnames(expbe_norm2)[c(4,7:8)],max.lms = 1,peak.density.thr = 0.05)#Detects and align 1 peak 
+aligned_transformed_flowset=normtr$flowset
+retrotransformed_flowset <- inversebiexponentialTransform(aligned_transformed_flowset) 
+
+```
+
+Alignment in flowset2 (June10)
+
+```{r}
+
+# same conditions work as in May10th
+#### need to change this function to detect peaks or at least have the user add the column number
+colnames(transformed_flowset)
+normtr=gaussNorm(transformed_flowset,colnames(transformed_flowset)[c(1,3,9:length(colnames(transformed_flowset))-1)],max.lms = 2,peak.density.thr = 0.001)
+
+
+expbe_norm2=normtr$flowset
+normtr=gaussNorm(expbe_norm2,colnames(expbe_norm2)[c(4,7:8)],max.lms = 1,peak.density.thr = 0.05)#Detects and align 1 peak 
+aligned_transformed_flowset=normtr$flowset
+retrotransformed_flowset <- inversebiexponentialTransform(aligned_transformed_flowset) 
+```
+
+
+
+See the transformations
+```{r}
+plotdensity_flowset(flowset)
+plotdensity_flowset(transformed_flowset)
+plotdensity_flowset(aligned_transformed_flowset)
+
+
+```
+
+
+Save the flowset dataset May10
+
+```{r}
+
+flowsetMay10 <- retrotransformed_flowset
+flowset_to_csv(flowsetMay10)
+
+
+```
+
+Save flowset from June 10
+
+```{r}
+flowsetJune10 <- retrotransformed_flowset
+flowset_to_csv(flowsetJune10)
+
+```
+
+
+
+Now create the Seurat object
+
+```{r}
+
+AB_vector <- c("AQP4", "CD24", "CD44","CD184","CD15","HepaCAM","CD29",
+                         "CD56", "O4","CD140a","CD133","GLAST","CD71")
+
+df1 <- read.csv(paste(output_path,"flowsetMay10.csv",sep=""))
+df2 <- read.csv(paste(output_path,"flowsetJune10.csv",sep=""))
+dim(df1)
+dim(df2)
+
+# The csv doesn't have both datasets May and June
+df <- rbind(df1,df2)
+dim(df)
+df$cell <- rownames(df)
+write.csv(df, paste(output_path, "FlowsetMayJune.csv"))
+
+seu1 <- make_seu(df1, AB_vector)
+seu2 <- make_seu(df2, AB_vector)
+
+
+seu <- merge(seu1,seu2)
+seu.b <- make_seu(df, AB_vector)
+
+# run again with the proper object 
+seu <- seu.b
+
+```
+
+Cluster
+
+
+```{r}
+
+# need to fix/test functions
+seu <- ScaleData(seu, model = "negbinom")
+
+# number of antibodies measured/ features 
+n = 13
+# list of antibodies - could also include FSC-W etc
+#AB_vector 
+i = 60
+j = c(0.2,0.5,0.8,1.2)
+
+
+seu <- RunPCA(seu, assay = "RNA", features = AB_vector, npcs = 13, approx = FALSE )
+seu <- FindNeighbors(seu, dims = 1:13, k.param = i)
+seu <- RunUMAP(seu, dims = 1:13, n.neighbors = i, min.dist = 0.1, spread = 1.5)
+seu <- FindClusters(seu, resolution = j)
+
+
+
+```
+See dim plots
+
+```{r}
+
+DimPlot(seu, group.by = 'RNA_snn_res.1.2', label = TRUE)
+
+
+```
+
+Now annotate the cell types using:
+1. correlation predictions
+2. Visualization of heatmaps
+3. RandomForest
+4. Seurat transfer
+
+
+```{r}
+
+# correlation predictions
+
+# run the correlation prediction function on the full dataset
+reference_path <- "/Users/rhalenathomas/GITHUB/PhenoID_single_cell_flow_cytometry_analysis/old/correlation/ReferenceMatrix9celltypesOrdered.csv"
+output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/FlowDataFiles/PresortingMay10June10/"
+
+test_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/FlowDataFiles/PresortingMay10June10//FlowsetMayJune.csv"
+
+test <- read.csv("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/FlowDataFiles/PresortingMay10June10/FlowsetMayJune.csv")
+ref <- read.csv("/Users/rhalenathomas/GITHUB/PhenoID_single_cell_flow_cytometry_analysis/old/correlation/ReferenceMatrix9celltypesOrdered.csv")
+
+#run the correlation function
+find_correlation(test_path, reference_path, output_path)
+
+cor <- find_correlation(df, 
+                        ref, 
+                             min_corr = 0.1, 
+                             min_diff = 0.05)
+
+# testing the function - there is an error
+reference = ref
+test = df
+min_corr = 0.1 
+min_diff = 0.05
+
+
+
+# this produces a csv with the Frequencies of each cell type and a csv with the best and second best correlation coefficients
+# read in those csv
+corr_cell.df <- read.csv("/Users/rhalenathomas/Documents/Projects_Papers/PhenoID/ForFigures/Corr_all/corr_celltypes.csv")
+freq.df <- read.csv("/Users/rhalenathomas/Documents/Projects_Papers/PhenoID/ForFigures/Corr_all/Frequencytabletypes.csv")
+
+
+# add the correlation predictions to the meta data
+
+seu <- AddMetaData(object=seu, metadata=corr_cell.df$cell.label, col.name = 'cor.labels')
+unique(seu$cor.labels)
+
+
+
+
+```
+
+
+
+```{r}
+# Random Forest predictions
+
+# read in the saved model
+rf <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/PaperFigures/RFM_trained.11072022.Rds")
+
+AB <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+
+df <- transpose(as.data.frame(GetAssayData(seu,slot = 'scale.data')))
+dim(df)
+colnames(df) <- AB
+rfm.pred <- predict(rf,df)
+head(rfm.pred)
+results.df <- as.data.frame(rfm.pred)
+head(results.df)
+
+# add the predictions to the seurat object
+seu <- AddMetaData(object=seu, metadata= as.factor(results.df$rfm.pred), col.name = 'rf.pred')
+unique(seu$rf.pred)
+# save the RFM predictions
+saveRDS(seu, paste(output_path,"NewDataannaote.14122022.Rds"))
+
+DimPlot(seu, group.by = "rf.pred")
+
+# make a table of the predictions per cluster
+
+t.lables <- as.data.frame(table(seu$RNA_snn_res.1.2,seu$rf.pred))
+t.lables$Freq <- as.double(t.lables$Freq)
+# take top 2 predictions in case of unknown being the top 
+top.prediction <-as.data.frame(t.lables  %>% group_by(Var1)  %>% top_n(2, Freq))
+top2rf <- top.prediction
+
+
+```
+
+
+
+```{r}
+
+# seurat transfer anchor predictions
+
+# using the 9000 cells reference used for the full dataset annotation
+
+seu.r<- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/PaperFigures/Seu9000annot.08072021.RDS")
+
+Idents(seu.r) <- 'subgroups'
+# we can also use the downsampled version of the full dataset - there are more subgroups of cells
+
+anchors <- FindTransferAnchors(reference = seu.r, query = seu, features = AB, dims = 1:12)
+predictions <- TransferData(anchorset = anchors, refdata = seu.r$subgroups, k.weight = 25)
+seu <- AddMetaData(seu, predictions$prediction.score.max, col.name = "trans.pred")
+
+DimPlot(seu, group.by = 'trans.pred')
+
+
+
+```
+
+
