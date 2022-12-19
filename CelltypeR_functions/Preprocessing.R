@@ -58,6 +58,8 @@ aligned_transformed_flowset=normtr$flowset
 retrotransformed_flowset <- inversebiexponentialTransform(aligned_transformed_flowset) #apply the function for cancelling biexp transform 
 
 
+transformed_flowset <- transform(flowset, transformList(colnames(flowset), biexp))
+
 # a function that takes in a subset filter if desired
 # aligns if desired
 # saves the csv file
@@ -118,7 +120,7 @@ make_seu <- function(df, AB_vector){
   seu <- CreateSeuratObject(tm)
   seu <- AddMetaData(object=seu, metadata=df$Sample, col.name = 'Sample')
   seu <- NormalizeData(seu)
-  seu <- ScaleData(seu, model = "negbinom")
+  seu <- ScaleData(seu)
 }
 
 
