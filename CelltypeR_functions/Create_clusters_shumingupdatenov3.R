@@ -17,28 +17,29 @@ library(clustree) #for clustree plot
 library(Rphenograph) #for phenograph
 
 
-
-# install.packages('flexclust') 
-library(flexclust)#for adjusted rand index
-library(ggplot2) #for the plot function
-
-input_path <- "/Users/shumingli/Documents/GitHub/PhenoID_single_cell_flow_cytometry_analysis/Old/preprocessing/outputs/prepro_outsaligned_transformed_flowset.csv"
-df <- read.csv(input_path)
-# subsample <- sample(nrow(df), 3000) #subsample
-# df <- df[subsample, ]
-df2 <- df %>% dplyr::select(c("AQP4", "CD24", "CD44", "CD184", "CD15",
-                              "HepaCAM", "CD29", "CD56", "O4", "CD140a",
-                              "CD133", "GLAST", "CD71"))
-
-tm <- t(df2)
-rownames(tm) <- colnames(df2)
-colnames(tm) <- rownames(df2)
-s <- CreateSeuratObject(tm)
-s <- AddMetaData(object=s, metadata=df$Batch, col.name = 'Batch')
-AB <- colnames(df2) # save antibody names for feature plotting later
-s <- ScaleData(s) # add to scale data slot
-print(DoHeatmap(s, group.by = "Batch", features = AB)) # check the data
-s <- RunPCA(s, features = AB, npcs = 12, approx = FALSE)
+# 
+# # install.packages('flexclust') 
+# library(flexclust)#for adjusted rand index
+# library(ggplot2) #for the plot function
+# 
+# input_path <- "/Users/shumingli/Documents/GitHub/PhenoID_single_cell_flow_cytometry_analysis/Old/preprocessing/outputs/prepro_outsaligned_transformed_flowset.csv"
+# df <- read.csv(input_path)
+# # subsample <- sample(nrow(df), 3000) #subsample
+# # df <- df[subsample, ]
+# df2 <- df %>% dplyr::select(c("AQP4", "CD24", "CD44", "CD184", "CD15",
+#                               "HepaCAM", "CD29", "CD56", "O4", "CD140a",
+#                               "CD133", "GLAST", "CD71"))
+# 
+# 
+# tm <- t(df2)
+# rownames(tm) <- colnames(df2)
+# colnames(tm) <- rownames(df2)
+# s <- CreateSeuratObject(tm)
+# s <- AddMetaData(object=s, metadata=df$Sample, col.name = 'Sample')
+# AB <- colnames(df2) # save antibody names for feature plotting later
+# s <- ScaleData(s) # add to scale data slot
+# print(DoHeatmap(s, group.by = "Sample", features = AB)) # check the data
+# s <- RunPCA(s, features = AB, npcs = 12, approx = FALSE)
 
 #*shuming notes end
 
@@ -65,7 +66,7 @@ s <- RunPCA(s, features = AB, npcs = 12, approx = FALSE)
 #                        save.plot = TRUE, 
 #                        output_path = "/Users/shumingli/Desktop/nov4/")
 
-test$phenograph[[1]]
+#test$phenograph[[1]]
 
 #*end testing
 
@@ -246,7 +247,7 @@ flowsom <- function(input, #csv
     print("flowsom test9")
     # save the UMAP with cell types
     pdf(paste(output_path, clust_method,'UMAPcelltype.pdf',sep=""),width =8, height = 6)
-    print(DimPlot(seu,group.by = 'Batch'))
+    print(DimPlot(seu,group.by = 'Sample'))
     dev.off()
     print("flowsom test10")
   }
@@ -316,9 +317,9 @@ phenograph <- function(seu,
           theme(plot.title = element_text(size = 0.1)))
   dev.off()
   print("test7")
-  # we also want to see the batch on the UMAP
+  # we also want to see the Sample on the UMAP
   pdf(paste(output_path, clust_method, UMAP_name,sep = ""), width =8, height = 6)
-  print(DimPlot(seu, group.by = 'Batch'))
+  print(DimPlot(seu, group.by = 'Sample'))
   dev.off()
   print("test8")
   
@@ -462,10 +463,10 @@ louvain <- function(seu, #seu object
               theme(plot.title = element_text(size = 0.1)))
       dev.off()
       
-      # look at batches
-      pdf(paste(output_path, clust_method, "UMAPbatches_kn", i, ".pdf", sep = ""),
+      # look at Samplees
+      pdf(paste(output_path, clust_method, "UMAPSamplees_kn", i, ".pdf", sep = ""),
           width = 20, height = 10)
-      print(DimPlot(seu, group.by = 'Batch', label.size = 1))
+      print(DimPlot(seu, group.by = 'Sample', label.size = 1))
       dev.off()
     }
     
