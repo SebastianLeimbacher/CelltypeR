@@ -1,6 +1,7 @@
 # Data preprocessing functions
-# fsc_to_df                        (Rhalena)
+# fsc_to_fs                        (Rhalena)
 # harmonize                        (Rhalena)
+# flowset_to_csv
 # df_to_seurat                     (Rhalena)
 
 
