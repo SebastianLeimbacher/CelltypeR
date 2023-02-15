@@ -263,9 +263,8 @@ RFM_train <- function(seurate_object,
   print(paste("Best number of features to draw is ",rf_mtry$bestTune$mtry, sep = ""))
   print(paste("Max accuracy is ", max(rf_mtry$results$Accuracy), sep=""))
   best_mtry <- rf_mtry$bestTune$mtry 
-  
   # best node size
-  print("Searching for best node size")
+  print("Searching for best max node size")
   store_maxnode <- list()
   tuneGrid <- expand.grid(.mtry = best_mtry)
   for (maxnodes in maxnodes) {
@@ -287,10 +286,10 @@ RFM_train <- function(seurate_object,
   # summarize results makes another list object with accuracy
   results_sum$statistics$Accuracy
   # find the max accuracy and the max nodes with the max accuracy
-  sum.df <- data.frame(results_sum$values)
+  sum.df.2 <- data.frame(results_sum$values)
   max_accuracy <- max(sum.df.2)
   #print(paste("Max accuracy is ",max_accuracy))
-  sum.df.2 <- select(sum.df, -contains("Kappa"))
+  sum.df.2 <- select(sum.df.2, -contains("Kappa"))
   colnames(sum.df.2) <- nodes
   for(i in (1:10)){
     #print(colnames(sum.df.2)[which.max(sum.df.2[i,])])
@@ -315,7 +314,7 @@ RFM_train <- function(seurate_object,
                          tuneGrid = tuneGrid,
                          trControl = trControl,
                          importance = TRUE,
-                         nodesize = 25,
+                         nodesize = start_node,
                          maxnodes = as.numeric(max_node),
                          ntree = ntree)
     key <- toString(ntree)
@@ -325,9 +324,9 @@ RFM_train <- function(seurate_object,
   results_tree <- resamples(store_maxtrees)
   results_sum <- (summary(results_tree))
   # make a data frame with the summary results
-  sum.df <- data.frame(results_sum$values)
+  sum.df.2 <- data.frame(results_sum$values)
   #print(paste("Max accuracy is ",max_accuracy))
-  sum.df.2 <- select(sum.df, -contains("Kappa"))
+  sum.df.2 <- select(sum.df.2, -contains("Kappa"))
   colnames(sum.df.2) <- trees
   max_accuracy <- max(sum.df.2)
   for(i in (1:10)){
@@ -425,7 +424,7 @@ seurat_predict <- function(seu.q, seu.r, ref_id = 'Labels', down.sample = 500, m
 
 
 plot_lab_clust <- function(seu, seu.cluster, seu.labels){
-  t.lables <- as.data.frame(table(seu.clusters, seu.labels))
+  t.lables <- as.data.frame(table(seu.cluster, seu.labels))
   t.lables$Freq <- as.double(t.lables$Freq)
   colnames(t.lables) <- c("Cluster","Lable","Freq")
   print(ggplot(t.lables, aes(y = Freq, x = Cluster, fill = Lable)) + geom_bar(position = "stack", stat= "identity"))
@@ -533,13 +532,14 @@ cluster_annotate <- function(seu, ann.list,
   
   # now reorder by cluster number
   df3$Cluster <- as.integer(as.character(df3$Cluster))
-  df.sort <- df3  %>% arrange(Cluster) 
+  dfsort <- df3  %>% arrange(Cluster) 
   # get a vector 
-  print(df.sort %>% select("Cluster","consensus"))
+  dfcon <- dfsort %>% dplyr::select("Cluster","consensus")
+  print(dfcon)
   
   # now add the annotations into the seurat
   # use the simple annnotation function
-  seu <- annotate(seu, annotations = df.sort$consensus, to_label,
+  seu <- annotate(seu, annotations = dfcon$consensus, to_label,
            annotation_name)
 }
 
