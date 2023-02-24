@@ -1,0 +1,81 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+compare groups function tests 
+
+
+```{r}
+seu.q <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/9MBO/prepro_outs/clusters/AllcellLablesMarch25.Rds")
+
+colnames(seu.q@meta.data)
+
+```
+```{r}
+
+
+
+proprotionplots <- function(seu, seu.var, seu.lable, groups = "Sample"){
+  sample.lables <- as.data.frame(table(seu.var, seu.lable))
+  sample.lables$Freq <- as.double(sample.lables$Freq)
+
+  # bar chart of with percent 
+  print(ggplot(sample.lables, aes(x = seu.var,y=Freq ,fill = seu.lable)) + 
+          geom_bar(position= "fill", stat = "identity") + 
+          scale_y_continuous(labels = scales::percent_format()) + 
+          theme_classic() + 
+          theme(text = element_text(size=15),
+        axis.text.x = element_text(angle=90, hjust=1))  
+        + xlab(groups) + ylab('Percent of Cell type') + RotatedAxis())
+}
+
+
+proprotionplots(seu.q,seu.var = seu.q$Genotype, seu.lable = seu.q$cell.types, groups = "Genotype")
+
+
+var.list <- list(seu.q$orig.ident, seu.q$Genotype)
+varnames <- c("Samples", "Genotype")
+for (i in seq_along(var.list)) {
+  var <- var.list[[i]]
+  proprotionplots(seu = seu.q, seu.var = var, seu.lable = seu.q$cell.types, groups = varnames[i])
+}
+
+
+# put it all into a function
+# var.list is a list defining seurat metadata slots
+# xgroup is the cell types or x axis grouping variable 
+# varnames is a character vector of labels for the x axis of the plots
+
+plotproportions <- function(seu, var.list, xgroup, varnames){
+  for (i in seq_along(var.list)) {
+  var <- var.list[[i]]
+  proprotionplots(seu = seu, seu.var = var, seu.lable = xgroup, groups = varnames[i])
+}
+}
+
+plotproportions(seu.q, var.list = var.list, xgroup = seu.q$cell.types, varnames = varnames)
+
+
+
+
+
+```
+
+
+
+```{r}
+
+# testing colours
+
+colours <- c("chocolate1","chocolate3",
+                   "lightsalmon", "pink","lightpink3",
+                   "steelblue3","deepskyblue",
+                   "plum3","purple",
+                   "seagreen3","tomato4","burlywood3","grey90","brown")
+
+plotproportions(seu.q, var.list = var.list, xgroup = seu.q$cell.types, varnames = varnames, my_colours = colours)
+
+```
+
+

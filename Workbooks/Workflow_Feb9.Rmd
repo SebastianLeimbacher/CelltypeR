@@ -106,9 +106,6 @@ Flowsome takes in the dataframe directly.
 
 # make sure to always keep the same antibody order or your labels will not be correct
 
-# feature order used to make the data object
-AB <- c("AQP4", "CD24", "CD44","CD184","CD15","HepaCAM","CD29",
-                         "CD56", "O4","CD140a","CD133","GLAST","CD71")
 
 # antibody features in order to appear on the plots
 AB <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
@@ -120,14 +117,14 @@ Save dataframe and seurat object for later
 
 ```{r}
 
-output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/"
+#output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/"
 
 # to save the df for later
 # write.csv(df, "pathway/filename.csv")
-write.csv(df, paste(output_path,"df9000.csv", sep = ""))
+write.csv(df, paste(output_path,"df9000Feb15.csv", sep = ""))
 
-# save the seurat object
-saveRDS(seu, paste(output_path,"seu9000.RDS", sep = ""))
+
+saveRDS(seu, paste(output_path,"seu9000Feb15.RDS", sep = ""))
 
 
 
@@ -200,8 +197,10 @@ Continue exploring parameters - Using Phenograph
 
 output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/exp_clusters/pheno/"
 
+
+
 test.pheno <- explore_param(input = seu, 
-                       cluster_method = c("phenograph"),
+                       ,
                        df_input = df2,
                        for.flowsom.k = c(2), 
                        for.phenograph.and.louvain.k = c(60),

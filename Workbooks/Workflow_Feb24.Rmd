@@ -1,0 +1,513 @@
+---
+title: "CelltypeR workflow"
+output: html_notebook
+---
+
+1. Data preprocessing
+a.	Read FlowJo files into R.
+b.	Create a data frame with intensity measurements for each marker for all samples within the experiment to be analyzed.  
+c.	Harmonize data 
+d.	Explore clusters
+
+```{r}
+# load necessary libraries 
+library(Seurat)
+library(dplyr) 
+library(ggplot2)
+# library(CelltypeR)
+
+```
+
+
+Read in the flow data
+This data should be the gated live cells.  
+All samples need to be in one folder.
+
+
+```{r}
+
+input_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/FlowDataFiles/9MBO"
+output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/"
+
+# 1.a Read in FlowJo Files 
+
+# choose to downsample to 9000 where possible
+# check this - I don't think it worked
+flowset <- fsc_to_fs(input_path, downsample = 9000)
+# down sample can be a number, 'none' or 'min'
+
+# look at file names and rename with shorter sample names
+
+sampleNames(flowset)
+sampleNames(flowset) <- sampleNames(flowset) <- c("3450_0306","AIW002_0306","AJG001C_0306","3450_0317A","AIW002_0317A","AJG001C_0317A","3450_0317B","AIW002_0317B","AJG001C_0317B")
+sampleNames(flowset)
+
+
+# if we want to save the flowset object now we can 
+# this would be read back in with flowset 
+# 
+
+
+
+```
+
+
+Harmonize data to remove batch or technical variation
+
+This requires us to look and see where there are two peaks to align. We need to visualize the peaks of the transformed data before aligning.
+
+```{r}
+
+# we can decided what level of processing to choose with the argument 'processing'
+# biexp only applies a biexponential transformation
+# align applies biexp transform and then aligns peaks
+# retro (default), transforms, aligns and then reverse transforms
+flowset_biexp <- harmonize(flowset, processing = 'biexp')
+# we can visualize the peaks to see where there are two peaks for alignment
+
+# we need to enter the column index for which peaks to align, the alignment for one or two peaks is not the same. 
+#plotdensity_flowset(flowset)
+#plotdensity_flowset(flowset_biexp) # to see the peaks
+
+flowset_align <- harmonize(flowset, processing = 'align', 
+                           two_peaks = c(7:20),
+                       one_peak = c(1:6,21), threshold = 0.01)
+
+flowset_retro <- harmonize(flowset, processing = 'retro', 
+                           two_peaks = c(7:20),
+                       one_peak = c(1:6,21), threshold = 0.01)
+
+df <- flowset_to_csv(flowset_retro)
+
+
+
+
+```
+
+Now we have made all the different processing of the fsc files.  We can visualize the intensity in cell density plots to see the alignment
+
+```{r}
+#plotdensity_flowset(flowset)
+plotdensity_flowset(flowset_biexp)
+plotdensity_flowset(flowset_align)
+#plotdensity_flowset(flowset_retro)
+
+
+```
+
+Now we will make test out clustering.
+For Seurat clustering and Phenograph we will make the Seurat object
+Flowsome takes in the dataframe directly.
+
+
+```{r}
+
+# the function make_seu will take in the df of expression and Antibody/Marker list as a vector and create a seurat object. Values are scaled. Marker expression will be in the "RNA" slot. PCA is calculated using AB vector as the features 
+
+# make sure to always keep the same antibody order or your labels will not be correct
+
+
+# antibody features in order to appear on the plots
+AB <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+seu <- make_seu(df, AB_vector = AB)
+
+
+```
+Save dataframe and seurat object for later
+
+```{r}
+
+output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/"
+
+# to save the df for later
+# write.csv(df, "pathway/filename.csv")
+#write.csv(df, paste(output_path,"df9000Feb15.csv", sep = ""))
+write.csv(df, paste(output_path,"df9000Feb24.csv", sep = ""))
+# save the seurat object
+saveRDS(seu, paste(output_path,"seu9000Feb24.RDS", sep = ""))
+
+
+
+```
+
+
+Read in the csv of the flow files processed and the seurat object
+
+```{r}
+df.input <- read.csv("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/df9000Feb24.csv")
+
+seu <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/seu9000Feb24.RDS")
+
+
+```
+
+Test Flowsom
+
+```{r}
+
+output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/exp_clusters/flow/"
+
+flowsom.test <- flowsom(input = seu, #seurat
+                    df_input = df.input, #the processed df2 file before being converted to seurat
+                    flow_k = c(3,5),
+                    run.stats = TRUE,
+                    run.plot = FALSE,
+                    save_to = output_path)
+
+```
+
+
+
+Explore cluster parameters
+
+```{r}
+df2 <- df.input %>% dplyr::select(AB) # need to add this line into the main explore param function 
+
+```
+
+Phenograph
+
+```{r}
+
+output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/exp_clusters/pheno/"
+
+pheno.test <- phenograph(input = seu, df_input = df.input,
+                         pheno_lou_kn = c(20,40),
+                         run.stats = TRUE,
+                         run.plot = TRUE,
+                         save_to = output_path)
+
+
+```
+
+
+Test functions Louvain
+
+```{r}
+
+output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/exp_clusters/seu/"
+
+lou.test <- louvain(input = seu, #seu object
+                    df_input = df.input,
+                    pheno_lou_kn = c(20,40),
+                    resolutions = c(0.2,0.5),
+                    run.plot = FALSE, #option to save the graphs  
+                    run.stats = FALSE, #option to save stats list  
+                    save_to #only required when save is TRUE
+)
+
+
+```
+
+
+
+
+
+Annotate clusters
+1. Visualization for manual annotation. - output by clustering function
+2. CAM (Correlation assignment model) - requires reference matrix
+3. RFM (Random Forest Model) - requires annotated matching flow dataset
+4. Seurat label transfer - requires annotated matching flow data in a seurat object
+
+
+
+```{r}
+
+# run clustering with only desired conditions - use function - TEMP run directly 
+
+seu <- RunPCA(seu, features = AB)
+seu <- FindNeighbors(seu, dims = 1:12, k.param = 60)
+# must take one less than the number of antibodies 
+
+seu <- FindClusters(seu, resolution = 0.8)
+seu <- RunUMAP(seu, dims = 1:12, n.neighbors = 46, min.dist = 0.4,
+               spread = 1.5)
+DimPlot(seu)
+
+
+```
+
+```{r}
+# save with graph
+saveRDS(seu,"/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/seu9000Feb24.RDS")
+
+
+
+```
+
+
+
+Visualize expression on UMAP and with heat maps
+
+```{r}
+
+# this will let us see one at at time
+for (i in AB) {
+  print(FeaturePlot(seu, features = i, min.cutoff = 'q1', max.cutoff = 'q95', label = TRUE))
+}
+
+
+```
+
+
+
+```{r}
+
+output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/"
+saveRDS(seu, paste(output_path,"cluster9000.RDS"))
+
+```
+
+Predict cell annotations with CAM (Corralations assignment method)
+
+```{r}
+
+reference_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/Data/ReferenceMatrix9celltypesOrdered.csv"
+
+
+
+test_data <- read.csv("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/exp_clusters/df9000.csv") 
+reference_data <- read.csv(reference_path)
+
+cor <- find_correlation(test_data, 
+                             reference_data, 
+                             min_corr = 0.5, 
+                             min_diff = 0.05)
+
+# creates a dataframe with cor1 cor2 and predicted cell type label
+
+
+
+```
+
+Visualize the CAM results
+
+```{r}
+
+plot_corr(cor)
+
+
+```
+
+Apply correlation predictions to clusters and output a vector for annotation functions
+
+```{r}
+
+# add the correlation predictions to the meta data
+seu <- AddMetaData(object=seu, metadata=cor$cell.label, col.name = 'cor.labels')
+# see the labels added
+unique(seu$cor.labels)
+
+seu.cluster = seu$RNA_snn_res.0.8
+seu.labels = seu$cor.labels
+
+# plot the cluster predictions
+plot_lab_clust(seu, seu$RNA_snn_res.0.8, seu$cor.labels)
+
+
+
+```
+
+Run get annotations function to return a vector of annotation in the order of the clusters.
+
+```{r}
+
+
+cor.ann <- get_annotation(seu, seu.cluster = seu$RNA_snn_res.0.8, seu.label = seu$cor.labels, 
+               top_n = 3, ignore_unknown = TRUE, Label = "CAM")
+cor.ann
+
+
+
+
+```
+
+
+Use a trained Random Forest model to predict cell types. 
+Training of the Random Forest model with an annotated data set is below.
+
+```{r}
+
+# you must have a saved trained model from a data object annotated from the same markers
+
+rf <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/PaperFigures/RFM_trained.11072022.Rds")
+
+
+rfm.pred <- RFM_predict(seu, rf)
+head(rfm.pred)
+
+# add the predictions into the seurat object
+
+seu <- AddMetaData(object=seu, metadata=rfm.pred$`predict(rf, df)`, col.name = 'rfm.labels')
+
+# check that the data is added 
+table(seu$rfm.labels)
+
+
+```
+
+Get the annotation by cluster for the RFM
+
+```{r}
+
+rfm.ann <- get_annotation(seu, seu$RNA_snn_res.0.8,seu$rfm.labels, 
+               top_n = 3, filter_out = c("unknown","Unknown","Mixed"), Label = "RFM")
+rfm.ann
+
+
+```
+
+Plot RFM predictions
+
+```{r}
+
+
+plot_lab_clust(seu, seu.cluster = seu$RNA_snn_res.0.8, seu.labels = seu$rfm.labels, filter_out = c("unknown","Unknown","Mixed"))
+
+
+```
+
+
+
+Predicting cell types with Seurat label transfer using anchors
+
+
+
+```{r}
+
+# takes in a seurat object with the labels added 
+# makes a dataframe with the count of predicted labels for each cluster
+# input seurat object with the predicted labels in the meta data
+# input the clusters meta data slot to be labels
+# input the meta data slot with the labels (correlation, random forest, seurat predicted)
+
+#need reference data object with labels
+seu.r<- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/PaperFigures/Seu9000annot.08072021.RDS")
+
+
+# the output is a seurat object with the predicted annotations
+
+seu <- seurat_predict(seu, seu.r, ref_id = 'subgroups', down.sample = 500, markers = AB)
+
+
+
+
+```
+
+```{r}
+
+# plot the seurat anchor predictions
+# get the annotation table for the seurat anchor predictions 
+
+plot_lab_clust(seu, seu$RNA_snn_res.0.8, seu$seu.pred)
+
+# to not filter anything use c()
+seu.ann <- get_annotation(seu, seu$RNA_snn_res.0.8,seu$seu.pred, 
+               top_n = 3, filter_out = c(), Label = "Seurat")
+seu.ann
+
+
+```
+
+Get a consensus of cluster annotations, Add the annotations to the seurat object
+
+
+
+```{r}
+
+# manual annotations
+# quick cheat just using the seurat labels to get a sting of annotations
+
+temp <- paste("'",as.character(seu.ann$Seurat), "'", collapse = ", ", sep = "" )
+my.ann <- c('Unknown', 'Radial Glia 1', 'Unknown', 'Mixed', 'Neurons 1', 'Radial Glia 3', 'Epithelial', 'Astrocytes mature', 'Endothelial', 'Astrocytes 1', 'Radial Glia 2', 'Neurons 1', 'NPC', 'Neurons 3', 'Epithelial', 'Neurons 1', 'Epithelial', 'Oligodendrocytes', 'Stem-like 1', 'Epithelial', 'NPC', 'Astrocytes mature', 'Oligodendrocytes', 'Stem-like 1')
+cluster.n <- c(0:23)
+man.ann <- data.frame(cluster.n, my.ann)
+colnames(man.ann) <- c("Cluster","manual")
+
+# needs to be factors 
+man.ann <- data.frame(lapply(man.ann, factor))
+
+dim(man.ann)
+dim(cor.ann)
+dim(rfm.ann)
+dim(seu.ann)
+# function to take in dataframes of different predictions and a vector of manual annotation
+# only one is required
+
+# the annotation function takes in a list of the annotation dataframes
+
+ann.list <- list(man.ann,cor.ann,rfm.ann,seu.ann)
+
+# annotate the seurat object
+
+seu <- cluster_annotate(seu, ann.list, 
+                        annotation_name ="CellType3", 
+                        to_label = "RNA_snn_res.0.8")
+
+
+```
+
+```{r}
+#save with the annotations
+saveRDS(seu,"/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/seu9000Feb24.RDS")
+
+```
+
+
+
+
+```{r}
+DimPlot(seu)
+
+```
+
+Save an annotated data object
+
+```{r}
+
+
+```
+
+
+
+Compare groups
+
+```{r}
+
+seu <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/seu9000Feb15.RDS")
+
+
+```
+
+
+
+
+
+
+
+
+
+
+Train Random Forest model
+Requires a labelled seurat object
+More cells will give higher accuracy but increase computation time.
+Run in HPC with lots of cells
+
+
+```{r}
+
+rf <- RFM_train(seurate_object = seu, 
+                             AB_list = AB, annotations = seu$CellType3,
+                      split = c(0.8,0.2),
+                      downsample = 20000,
+                      seed = 222,
+                      mytry = c(1:10),
+                      maxnodes = c(12: 25),
+                      trees = c(250, 500, 1000,2000),
+                      start_node = 15)
+
+save(rf, output_path,"trainedRFMFeb14.Rds")
+
+```
+
+

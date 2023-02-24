@@ -28,13 +28,12 @@ require("Seurat")
 # users can rename samples after
 
 
-fsc_to_df <- function(input_path, downsample = 'none'){ 
+fsc_to_fs <- function(input_path, downsample = 'none'){ 
   flowset = read.flowSet(path=input_path,transformation = FALSE ,
                emptyValue = FALSE,truncate_max_range = FALSE, 
                package="flowCore")
   fsApply(flowset,
           function(x){x[ ,grepl("^[{'FJComp'}|{'FCS'}|{'SSC'}].*A$",colnames(flowset))]})
-  return(flowset)
   copy_flowset=flowset[seq(along=flowset)]
   for (i in 1:length(copy_flowset)){
     marker.names=copy_flowset[[i]]@parameters@data$desc
@@ -167,7 +166,7 @@ flowset_to_csv=function(flowset, output_path, save.csv = FALSE){
 
 
 make_seu <- function(df, AB_vector){
-  df2 <- df %>% dplyr::select(AB_vector)
+  df2 <- df %>% dplyr::select(all_of(AB_vector))
   m <- as.matrix(df2)
   tm <- t(df2)
   rownames(tm) <- colnames(df2)

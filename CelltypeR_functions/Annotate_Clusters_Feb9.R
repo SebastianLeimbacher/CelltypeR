@@ -423,13 +423,15 @@ seurat_predict <- function(seu.q, seu.r, ref_id = 'Labels', down.sample = 500, m
 # input the meta data slot with the labels (correlation, random forest, seurat predicted)
 
 
-plot_lab_clust <- function(seu, seu.cluster, seu.labels){
+plot_lab_clust <- function(seu, seu.cluster, seu.labels, filter_out = c("unknown","Unknown","Mixed")){
   t.lables <- as.data.frame(table(seu.cluster, seu.labels))
   t.lables$Freq <- as.double(t.lables$Freq)
-  colnames(t.lables) <- c("Cluster","Lable","Freq")
-  print(ggplot(t.lables, aes(y = Freq, x = Cluster, fill = Lable)) + geom_bar(position = "stack", stat= "identity"))
-  t.lab.known <- t.lables %>% filter(!Lable == "unknown")
-  print(ggplot(t.lab.known, aes(y = Freq, x = Cluster, fill = Lable)) + geom_bar(position = "stack", stat= "identity"))
+  colnames(t.lables) <- c("Cluster","Label","Freq")
+  print(ggplot(t.lables, aes(y = Freq, x = Cluster, fill = Label)) + geom_bar(position = "stack", stat= "identity"))
+  # now filter out the unknown and mixed or whatever labels are over powering
+  t.lab.known <- t.lables %>% dplyr::filter(!Label %in% filter_out)
+  print(ggplot(t.lab.known, aes(y = Freq, x = Cluster, fill = Label)) + 
+          geom_bar(position = "stack", stat= "identity"))
 }
 
 
@@ -458,30 +460,30 @@ plot_lab_clust <- function(seu, seu.cluster, seu.labels){
 # will return a dataframe with label for each cluster number
 
 get_annotation <- function(seu, seu.cluster, seu.label, top_n = 3, 
-                           ignore_unknown = FALSE, Label = "Label"){
+                           filter_out = FALSE, Label = "Label"){
   t.lables <- as.data.frame(table(seu.cluster, seu.label))
   t.lables$Freq <- as.double(t.lables$Freq)
-  colnames(t.lables) <- c("Cluster", Label,"Freq")
-  top.labs <- t.lables  %>% group_by(Cluster)  %>% top_n(top_n, Freq)
+  colnames(t.lables) <- c("Cluster", "Label","Freq")
+  top.labs <- t.lables  %>% group_by(Cluster) %>% top_n(top_n, Freq)
   sort.tops <- top.labs %>% as.data.frame() %>% arrange(desc(Freq))  %>% arrange(Cluster) 
   print(sort.tops)
   # now filter out the unknown if desired to get a label for each cluster
-  if(ignore_unknown == TRUE){
-    t.lab.known <- t.lables %>% filter(!Label == "unknown")
-    top.lab <- t.lab.known  %>% group_by(Cluster)  %>% top_n(1, Freq)
-    sort.tops <- top.lab %>% as.data.frame() %>% arrange(desc(Freq))  %>% arrange(Cluster) 
-    #print(sort.tops)
-  }
-  else{
+  if(length(filter_out) == 0){
     top.lab <- t.lables  %>% group_by(Cluster)  %>% top_n(1, Freq)
     sort.tops <- top.lab %>% as.data.frame() %>% arrange(desc(Freq))  %>% arrange(Cluster) 
-    #print(sort.tops)
   }
-  vec <- sort.tops[,Label]
-  vec <- paste(vec, collapse = ",")
+  else{
+    t.lab.known <- t.lables %>%
+      dplyr::filter(!(Label %in% filter_out))
+    top.lab <- t.lab.known  %>% group_by(Cluster) %>% top_n(1, Freq)
+    sort.tops <- top.lab %>% as.data.frame() %>% arrange(desc(Freq))  %>% arrange(Cluster) 
+  }
   print("Annotations in order of clusters starting at 0")
-  return(sort.tops %>% select(-"Freq"))
+  ann.df <- sort.tops %>% select(-"Freq")
+  colnames(ann.df) <- c("Cluster", Label)
+  return(ann.df)
 }
+
 
 ## example
 # input arguments 
