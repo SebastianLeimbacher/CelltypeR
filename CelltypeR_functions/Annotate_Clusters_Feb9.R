@@ -435,9 +435,6 @@ plot_lab_clust <- function(seu, seu.cluster, seu.labels, filter_out = c("unknown
 }
 
 
-
-
-
 ## examples usage
 
 # input arguments 
@@ -460,7 +457,7 @@ plot_lab_clust <- function(seu, seu.cluster, seu.labels, filter_out = c("unknown
 # will return a dataframe with label for each cluster number
 
 get_annotation <- function(seu, seu.cluster, seu.label, top_n = 3, 
-                           filter_out = FALSE, Label = "Label"){
+                           filter_out = 'none', Label = "Label"){
   t.lables <- as.data.frame(table(seu.cluster, seu.label))
   t.lables$Freq <- as.double(t.lables$Freq)
   colnames(t.lables) <- c("Cluster", "Label","Freq")
@@ -469,20 +466,37 @@ get_annotation <- function(seu, seu.cluster, seu.label, top_n = 3,
   print(sort.tops)
   # now filter out the unknown if desired to get a label for each cluster
   if(length(filter_out) == 0){
-    top.lab <- t.lables  %>% group_by(Cluster)  %>% top_n(1, Freq)
+  #(all(filter_out %in% c("","FALSE","none"))){
+    print("not filtering")
+    #top.lab <- t.lables  %>% group_by(Cluster)  %>% top_n(1, Freq)
+    top.lab <- t.lables %>%
+      group_by(Cluster) %>%
+      mutate(rank = dense_rank(desc(Freq))) %>%
+      filter(rank == 1) %>%
+      select(-rank)
     sort.tops <- top.lab %>% as.data.frame() %>% arrange(desc(Freq))  %>% arrange(Cluster) 
   }
   else{
-    t.lab.known <- t.lables %>%
-      dplyr::filter(!(Label %in% filter_out))
+    print("filtering")
+    t.lab.known <- t.lables %>% dplyr::filter(!(Label %in% filter_out))
     top.lab <- t.lab.known  %>% group_by(Cluster) %>% top_n(1, Freq)
+    #top.lab <- t.lab.known %>%
+    #  group_by(Cluster) %>%
+    #  mutate(rank = dense_rank(desc(Freq))) %>%
+     # filter(rank == 1) %>%
+    #  select(-rank)
     sort.tops <- top.lab %>% as.data.frame() %>% arrange(desc(Freq))  %>% arrange(Cluster) 
   }
-  print("Annotations in order of clusters starting at 0")
   ann.df <- sort.tops %>% select(-"Freq")
   colnames(ann.df) <- c("Cluster", Label)
   return(ann.df)
 }
+
+
+
+
+
+
 
 
 ## example

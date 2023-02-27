@@ -13,69 +13,52 @@ colnames(seu.q@meta.data)
 
 ```
 ```{r}
-
-
-
-proprotionplots <- function(seu, seu.var, seu.lable, groups = "Sample"){
-  sample.lables <- as.data.frame(table(seu.var, seu.lable))
-  sample.lables$Freq <- as.double(sample.lables$Freq)
-
-  # bar chart of with percent 
-  print(ggplot(sample.lables, aes(x = seu.var,y=Freq ,fill = seu.lable)) + 
-          geom_bar(position= "fill", stat = "identity") + 
-          scale_y_continuous(labels = scales::percent_format()) + 
-          theme_classic() + 
-          theme(text = element_text(size=15),
-        axis.text.x = element_text(angle=90, hjust=1))  
-        + xlab(groups) + ylab('Percent of Cell type') + RotatedAxis())
-}
-
+# plot on variable
 
 proprotionplots(seu.q,seu.var = seu.q$Genotype, seu.lable = seu.q$cell.types, groups = "Genotype")
+```
 
 
-var.list <- list(seu.q$orig.ident, seu.q$Genotype)
-varnames <- c("Samples", "Genotype")
-for (i in seq_along(var.list)) {
-  var <- var.list[[i]]
-  proprotionplots(seu = seu.q, seu.var = var, seu.lable = seu.q$cell.types, groups = varnames[i])
-}
-
-
-# put it all into a function
-# var.list is a list defining seurat metadata slots
-# xgroup is the cell types or x axis grouping variable 
-# varnames is a character vector of labels for the x axis of the plots
-
-plotproportions <- function(seu, var.list, xgroup, varnames){
-  for (i in seq_along(var.list)) {
-  var <- var.list[[i]]
-  proprotionplots(seu = seu, seu.var = var, seu.lable = xgroup, groups = varnames[i])
-}
-}
-
-plotproportions(seu.q, var.list = var.list, xgroup = seu.q$cell.types, varnames = varnames)
-
-
-
-
-
+```{r}
 ```
 
 
 
 ```{r}
 
-# testing colours
+# plot multiple variables and designate colours
 
 colours <- c("chocolate1","chocolate3",
                    "lightsalmon", "pink","lightpink3",
                    "steelblue3","deepskyblue",
                    "plum3","purple",
                    "seagreen3","tomato4","burlywood3","grey90","brown")
-
+# add colours
 plotproportions(seu.q, var.list = var.list, xgroup = seu.q$cell.types, varnames = varnames, my_colours = colours)
+# leave default colours - if colour variable is not long enough defaults are applied
+plotproportions(seu.q, var.list = var.list, xgroup = seu.q$cell.types, varnames = varnames)
 
 ```
 
+To see the UMAP split by a given variable we can use the seurat function
+
+```{r}
+
+DimPlot(seu.q, split.by = 'Genotype', group.by = 'cell.types')
+
+
+```
+
+```{r}
+
+# cell type names
+# this must be in the correct order that the cell types appear or else you will be naming things incorrectly
+marker.names <-  c("Mix","Neurons1","Astro1","RG1","RG2","Astro2","Astro3","Endothelial","Neurons2","Neurons3","Oligo", "Epithelial")
+
+plotmean(plot_type = 'heatmap',seu = seu.q, group = 'cell.types', markers = AB, 
+                     var_names = marker.names, slot = 'scale.data')
+
+
+
+```
 
