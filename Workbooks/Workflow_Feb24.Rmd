@@ -147,21 +147,29 @@ Test Flowsom
 
 output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/exp_clusters/flow/"
 
-flowsom.test <- flowsom(input = seu, #seurat
-                    df_input = df.input, #the processed df2 file before being converted to seurat
-                    flow_k = c(3,5),
-                    run.stats = TRUE,
-                    run.plot = FALSE,
-                    save_to = output_path)
+
+flow.test <- explore_param(seu, #for phenograph and louvain only
+                          cluster_method = 'flowsom', #take 1 cluster method
+                          df_input= df.input, #needed  if input "flowsom"
+                          flow_k = c(3,5,10,20), #k for flowsom
+                          pheno_lou_kn = NULL, #kn for phenograph or louvain
+                          lou_resolution = NULL, #resolution for louvain
+                          run.plot = TRUE, #print if run
+                          run.stats = TRUE, #print and return if run
+                          save_to = NULL)
+
+
+
+
 
 ```
 
-
-
-Explore cluster parameters
+See Flowsom stats plots
 
 ```{r}
-df2 <- df.input %>% dplyr::select(AB) # need to add this line into the main explore param function 
+p1 <- stats_plot(stats_ls = flow.test,
+                       save_to = output_path,
+                       clust_method = "flowsom") 
 
 ```
 
@@ -171,14 +179,31 @@ Phenograph
 
 output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/exp_clusters/pheno/"
 
-pheno.test <- phenograph(input = seu, df_input = df.input,
-                         pheno_lou_kn = c(20,40),
-                         run.stats = TRUE,
-                         run.plot = TRUE,
-                         save_to = output_path)
+pheno.test <-  explore_param(seu, #for phenograph and louvain only
+                          cluster_method = 'phenograph', #take 1 cluster method
+                          df_input= df.input, #needed  if input "flowsom"
+                          flow_k = NULL, #k for flowsom
+                          pheno_lou_kn = c(300,200,100), #kn for phenograph or louvain
+                          lou_resolution = NULL, #resolution for louvain
+                          run.plot = TRUE, #print if run
+                          run.stats = TRUE, #print and return if run
+                          save_to = NULL)
+
+## clustree in phenograph doesn't make sense but I've included it to see it anyway
+#
+### stats are now in a list
+
+```
+
+```{r}
+# try plot function for phenograph outputs
+stats_plot(stats_ls = pheno.test,
+                       save_to = output_path,
+                       clust_method = "phenograph") 
 
 
 ```
+
 
 
 Test functions Louvain
@@ -187,19 +212,100 @@ Test functions Louvain
 
 output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/exp_clusters/seu/"
 
-lou.test <- louvain(input = seu, #seu object
-                    df_input = df.input,
-                    pheno_lou_kn = c(20,40),
-                    resolutions = c(0.2,0.5),
-                    run.plot = FALSE, #option to save the graphs  
-                    run.stats = FALSE, #option to save stats list  
-                    save_to #only required when save is TRUE
+
+lou.test <- explore_param(input = seu, #for phenograph and louvain only
+                          cluster_method = "louvain", #take 1 cluster method
+                          df_input = NULL, #needed  if input "flowsom"
+                          flow_k = NULL, #k for flowsom
+                          pheno_lou_kn = c(40,100), #kn for phenograph or louvain
+                          lou_resolution = c(0.25,0.5,1), #resolution for louvain
+                          run.plot = TRUE, #print if run
+                          run.stats = TRUE, #print and return if run
+                          save_to = NULL)
+
+
+```
+
+Check cluster stability - best resolution/cluster number/k value by calculating RAND Index and STD of cluster number
+
+```{r}
+
+RI <- Rand_index(input = seu,
+                       resolutions = c(0.1,0.25,0.5,0.8,1),
+                       kn = 60,
+                       n = 10, #number of iterations
+                       save_to = NULL  #if null, will not save seul, ril, ncl, rdf
 )
+
+# it is recommended to run n= 100, however I ran only 10 here because it is long to calculate
+
+
+```
+
+```{r}
+ 
+#Look at the RI results
+plot_randindex(
+    rdf = RI$list,
+    cp = c("orange", "violet"),
+    view = c(0, 1) #zoom in x axis, this does not changes scales, just the viewable sections
+)
+
+# The RAND index indicates if cells are put into the same cluster each time the clustering is repeated - 1 mean they are exactly the same. We ran 10 times so there are 9 RI for each resolution.  There are 10 counts of the number of clusters (one for each iteration). Cluster number too low will not account for the true differences in groups, cluster numbers too high are difficult to annotate.
+
+
+```
+
+```{r}
+ ## test RAND Index again with more res, less reps - add in the plotting
+RI <- Rand_index(input = seu,
+                       resolutions = c(0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.75,1,1.25,1.5),
+                       kn = 60,
+                       n = 2, #number of iterations
+                       save_to = NULL  #if null, will not save seul, ril, ncl, rdf
+)
+
+```
+
+
+
+After checking parameters run cluster function to make add the clustering information into the 
+
+```{r}
+
+seu <- get_clusters(seu, method = "louvain",
+                         df_input = NULL, #needed  if input "flowsom"
+                         k = 60, #k for flowsom or kn for Phenograph and Seurat Louvain
+                         resolution = 0.5,
+                         plots = TRUE,
+                         save_plots = FALSE)
+
+```
+
+```{r}
+seu <- get_clusters(seu, method = "flowsom",
+                         df_input = df.input, #needed  if input "flowsom"
+                         k = 12, #k for flowsom or kn for Phenograph and Seurat Louvain
+                         resolution = NULL,
+                         plots = TRUE,
+                         save_plots = FALSE) 
 
 
 ```
 
 
+
+
+
+
+
+```{r}
+# save with graph
+saveRDS(seu,"/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/seu9000March08.RDS")
+
+
+
+```
 
 
 
@@ -209,41 +315,16 @@ Annotate clusters
 3. RFM (Random Forest Model) - requires annotated matching flow dataset
 4. Seurat label transfer - requires annotated matching flow data in a seurat object
 
-
-
-```{r}
-
-# run clustering with only desired conditions - use function - TEMP run directly 
-
-seu <- RunPCA(seu, features = AB)
-seu <- FindNeighbors(seu, dims = 1:12, k.param = 60)
-# must take one less than the number of antibodies 
-
-seu <- FindClusters(seu, resolution = 0.8)
-seu <- RunUMAP(seu, dims = 1:12, n.neighbors = 46, min.dist = 0.4,
-               spread = 1.5)
-DimPlot(seu)
-
-
-```
-
-```{r}
-# save with graph
-saveRDS(seu,"/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/seu9000Feb24.RDS")
-
-
-
-```
-
-
-
 Visualize expression on UMAP and with heat maps
 
 ```{r}
 
+AB <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+
+
 # this will let us see one at at time
 for (i in AB) {
-  print(FeaturePlot(seu, features = i, min.cutoff = 'q1', max.cutoff = 'q95', label = TRUE))
+  print(FeaturePlot(seu, features = i, min.cutoff = 'q1', max.cutoff = 'q97', label = TRUE))
 }
 
 
@@ -652,7 +733,7 @@ colnames(seu@meta.data)
 ```{r}
 # run the function
 
-var.names <- c("DaysinCulture", "Batch", "ExDate", "Genotype", "CellType")
+var.names <- c("Sample","DaysinCulture", "Batch", "ExDate", "Genotype", "CellType")
 
 df.for.stats <- Prep_for_stats(seu, marker_list = AB, variables = var.names, 
                                marker_name = 'Marker')
@@ -667,6 +748,47 @@ head(df.for.stats)
 ```
 
 
+First we have 3 variables: Experimental variable, Cell types, Markers
+We want to compare the mean expression per group:
+For all antibodies together in each cell type between a given variable (Genotype) (One way anova)
+We want to compare each antibody separately for a given variable for each cell type (two way anova)
+
+```{r}
+
+df.means <- df.for.stats %>% group_by(Sample, CellType, Marker) %>%
+  summarize(mean_value = mean(value), .groups = )
+
+head(df.means)
+dim(df.means)
+
+#%>% left_join(df.for.stats, by = c("Sample","CellType","Marker")) 
+
+df_means <- df.for.stats %>%
+  group_by(Sample, CellType, Marker) %>%
+  mutate(mean_value = mean(value)) %>%
+  distinct(Sample, CellType, Marker, mean_value, .keep_all = TRUE) %>% select(-value)
+
+
+get_means <- function(df, group_cols, value_col) {
+  df_means <- df %>%
+    group_by(across(all_of(group_cols))) %>%
+    mutate(mean_value = mean(value)) %>%
+    distinct(across(all_of(group_cols)), mean_value, .keep_all = TRUE) %>%
+    select(-value)
+  return(df_means)
+}
+
+df_means <- get_means(df.for.stats, group_cols = c("Sample","CellType","Marker"), value_col = "value")
+
+
+head(df_means)
+dim(df_means)
+
+
+
+
+
+```
 
 
 

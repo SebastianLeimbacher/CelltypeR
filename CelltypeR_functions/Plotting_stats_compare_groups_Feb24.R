@@ -149,34 +149,184 @@ Prep_for_stats <- function(seu, marker_list, variables, marker_name = 'Marker'){
 
 ### for using sample means 
 
+
 # group_cols is a vector with the columns to get the means from 
+# where dp1 is the dependent variable to compare (dependent variable 1)
+# dp2 is for 2 way anova and should be Marker or Celltype, 
+# but other options are possible
 
 runstats <- function(input_df, group_cols = c("Sample", "CellType","Marker"),
-                     stat_type = "ANOVA",dp1, dp2 = NULL, use.means = TRUE){
-  if(use.means = TRUE){
+                     value_col = "value",
+                     stat_type = "ANOVA",dp1, 
+                     dp2 = NULL, 
+                     use.means = TRUE,loop_by = "CellType"){
+  
+  if(use.means){
     get_means <- function(df, group_cols, value_col) {
       df_means <- df %>%
         group_by(across(all_of(group_cols))) %>%
-        mutate(mean_value = mean(value)) %>%
-        distinct(across(all_of(group_cols)), mean_value, .keep_all = TRUE) %>%
+        mutate(expression = mean(value)) %>%
+        distinct(across(all_of(group_cols)), expression, .keep_all = TRUE) %>%
         select(-value)
-    } else {
-      df_means <- input_df
+      return(df_means)
     }
-     
+    df_means <- get_means(input_df, group_cols, value_col)
+    print(head(df_means))
   }
-}
+    else {
+      df_means <- input_df
+      names(df_means)[names(df_means)== 'value'] <- 'expression'
+    }
+  
+  if(stat_type == "ANOVA"){
+    # run anova in a loop for each cell type
+    if(loop.by == "CellType"){
+      var.list <- unique(df_means$CellType)
+      for(i in var.list) {
+        df <- df_means %>% filter(CellType == i)
+        # run the anova
+        one.way <- aov(expression ~ dp1, df)
+        print(summary(one.way))
+        # run the posthoc
+    } elseif(loop.by == "Marker"){
+      var.list <- unique(df_means$Marker)
+    } else{
+      # no loop - do stats on all 
+    }
+    
+}  
 
 
 
+    
+    
+## testing correction
+    runstats <- function(input_df, group_cols = c("Sample", "CellType", "Marker"),
+                         value_col = "value",
+                         stat_type = "ANOVA",
+                         dp1,
+                         dp2 = NULL,
+                         use_means = TRUE,
+                         loop_by = "CellType") {
+      
+      if (use_means) {
+        get_means <- function(df, group_cols, value_col) {
+          df_means <- df %>%
+            group_by(across(all_of(group_cols))) %>%
+            mutate(expression = mean(value)) %>%
+            distinct(across(all_of(group_cols)), expression, .keep_all = TRUE) %>%
+            select(-value)
+          return(df_means)
+        }
+        df_means <- get_means(input_df, group_cols, value_col)
+        print(head(df_means))
+      } else {
+        df_means <- input_df
+        names(df_means)[names(df_means) == 'value'] <- 'expression'
+      }
+      
+      if (stat_type == "ANOVA") {
+        if (loop_by == "CellType") {
+          var_list <- unique(df_means$CellType)
+          for (i in var_list) {
+            df <- df_means %>% filter(CellType == i)
+            one_way <- aov(expression ~ df[[dp1]], data = df)
+            print(paste("ANOVA summary for ",as.character(i)))
+            print(summary(one_way))
+            post_test <- TukeyHSD(one_way)
+            print(paste("Tukey post hoc test for ", as.character(dp1),
+                        "for ", as.character(i)))
+            print(post_test)
+            print(plot(post_test))
+          }
+        } else if (loop_by == "Marker") {
+          var_list <- unique(df_means$Marker)
+          for (i in var_list) {
+            df <- df_means %>% filter(Marker == i)
+            one_way <- aov(expression ~ df[[dp1]], data = df)
+            print(paste("ANOVA summary for ",as.character(i)))
+            print(summary(one_way))
+            post_test <- TukeyHSD(one_way)
+            print(paste("Tukey post hoc test for ", as.character(dp1),
+                        "for ", as.character(i)))
+            print(post_test)
+            print(plot(post_test))
+          }
+        } else {
+          one_way <- aov(expression ~ df_means[[dp1]], data = df_means)
+          print(summary(one_way))
+          post_test <- TukeyHSD(one_way)
+          print(paste("Tukey post hoc test for ", as.character(dp1),
+                      "for ", as.character(i)))
+          print(post_test)
+          print(plot(post_test))
+        }
+      }
+    }
+    
 
 
+    
+### list output
+    
+    runstats <- function(input_df, group_cols = c("Sample", "CellType", "Marker"),
+                         value_col = "value",
+                         stat_type = "ANOVA",
+                         dp1,
+                         dp2 = NULL,
+                         use_means = TRUE,
+                         loop_by = "CellType") {
+      
+      output_list <- list() # Create empty list to store output
+      
+      if (use_means) {
+        get_means <- function(df, group_cols, value_col) {
+          df_means <- df %>%
+            group_by(across(all_of(group_cols))) %>%
+            mutate(expression = mean(value)) %>%
+            distinct(across(all_of(group_cols)), expression, .keep_all = TRUE) %>%
+            select(-value)
+          return(df_means)
+        }
+        df_means <- get_means(input_df, group_cols, value_col)
+        print(head(df_means))
+      } else {
+        df_means <- input_df
+        names(df_means)[names(df_means) == 'value'] <- 'expression'
+      }
+      
+      if (stat_type == "ANOVA") {
+        if (loop_by == "CellType") {
+          var_list <- unique(df_means$CellType)
+          for (i in var_list) {
+            df <- df_means %>% filter(CellType == i)
+            one_way <- aov(expression ~ df[[dp1]], data = df)
+            output <- list(summary(one_way), TukeyHSD(one_way))
+            names(output) <- c("ANOVA", "TukeyHSD")
+            output_list[[as.character(i)]] <- output # Append output to list
+          }
+        } else if (loop_by == "Marker") {
+          var_list <- unique(df_means$Marker)
+          for (i in var_list) {
+            df <- df_means %>% filter(Marker == i)
+            one_way <- aov(expression ~ df[[dp1]], data = df)
+            output <- list(summary(one_way), TukeyHSD(one_way))
+            names(output) <- c("ANOVA", "TukeyHSD")
+            output_list[[as.character(i)]] <- output # Append output to list
+          }
+        } else {
+          one_way <- aov(expression ~ df_means[[dp1]], data = df_means)
+          output <- list(summary(one_way), TukeyHSD(one_way))
+          names(output) <- c("ANOVA", "TukeyHSD")
+          output_list[[1]] <- output # Append output to list
+        }
+      }
+      
+      return(output_list) # Return the list of outputs
+    }
+    
+    
 
-##############################################################################################
-
-# make plots
-# input seurat object?
-# makes box plots by two variables
-
-
-
+## try getting results DF possible list of DF
+    
+ 

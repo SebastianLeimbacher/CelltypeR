@@ -7,21 +7,24 @@ compare groups function tests
 
 
 ```{r}
-seu.q <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/9MBO/prepro_outs/clusters/AllcellLablesMarch25.Rds")
+seu <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/9MBO/prepro_outs/clusters/AllcellLablesMarch25.Rds")
 
-colnames(seu.q@meta.data)
+colnames(seu@meta.data)
+unique(seu$labels.main.groups)
+
 
 ```
+
+
+
+
 ```{r}
 # plot on variable
 
 proprotionplots(seu.q,seu.var = seu.q$Genotype, seu.lable = seu.q$cell.types, groups = "Genotype")
+
+
 ```
-
-
-```{r}
-```
-
 
 
 ```{r}
@@ -61,4 +64,19 @@ plotmean(plot_type = 'heatmap',seu = seu.q, group = 'cell.types', markers = AB,
 
 
 ```
+
+
+```{r}
+seu <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/9MBO/prepro_outs/clusters/AllcellLablesMarch25.Rds")
+
+
+```
+
+
+```{r}
+ 
+
+```
+
+
 
