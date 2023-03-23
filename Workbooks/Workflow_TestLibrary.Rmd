@@ -4,17 +4,33 @@ output: html_notebook
 ---
 
 1. Data preprocessing
-a.	Read FlowJo files into R.
-b.	Create a data frame with intensity measurements for each marker for all samples within the experiment to be analyzed.  
-c.	Harmonize data 
-d.	Explore clusters
+a. Read FlowJo files into R.
+b. Create a data frame with intensity measurements for each marker for all          samples within the experiment to be analyzed.  
+c. Harmonize data 
+d. Create dataframe
+e. Create a Seurat object
+
+2. Cluster data
+a. Explore clustering methods and parameters.
+b. Determine cluster stability
+c. Create clusters with best conditions
+
+3. Annotate clusters with cell types.
+a. Predict cell types by correlation matrix
+b. Visualize expression by cluster for manual annotation
+c. With annotated an data set train Random Forest classifier to predict cell        types.
+d. With annotated an data set predict cell types with Seurat label transfer.
+e. For each prediction calculate the top most predicted cell per cluster and        take a consensus to annotate clusters.
+f. Add cluster annotations.
+
+
 
 ```{r}
 # load necessary libraries 
 library(Seurat)
 library(dplyr) 
 library(ggplot2)
-#library(CelltypeR)
+#library("CelltypeR")
 
 ```
 
@@ -31,8 +47,8 @@ output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analys
 
 # 1.a Read in FlowJo Files 
 
-# choose to downsample to 9000 where possible
-# check this - I don't think it worked
+# In Figure 3 downsample to 9000 where possible
+# Here downsample to 1000 to speed up computation
 flowset <- fsc_to_fs(input_path, downsample = 1000)
 # down sample can be a number, 'none' or 'min'
 
@@ -58,6 +74,7 @@ This requires us to look and see where there are two peaks to align. We need to 
 
 ```{r}
 
+
 # we can decided what level of processing to choose with the argument 'processing'
 # biexp only applies a biexponential transformation
 # align applies biexp transform and then aligns peaks
@@ -76,7 +93,7 @@ flowset_align <- harmonize(flowset, processing = 'align',
 flowset_retro <- harmonize(flowset, processing = 'retro', 
                            two_peaks = c(7:20),
                        one_peak = c(1:6,21), threshold = 0.01)
-
+### test again later without running library(flowCore)
 df <- flowset_to_csv(flowset_retro)
 
 
@@ -88,6 +105,7 @@ Now we have made all the different processing of the fsc files.  We can visualiz
 
 ```{r}
 #plotdensity_flowset(flowset)
+
 plotdensity_flowset(flowset_biexp)
 plotdensity_flowset(flowset_align)
 #plotdensity_flowset(flowset_retro)
@@ -122,9 +140,9 @@ output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analys
 # to save the df for later
 # write.csv(df, "pathway/filename.csv")
 #write.csv(df, paste(output_path,"df9000Feb15.csv", sep = ""))
-write.csv(df, paste(output_path,"df9000Feb24.csv", sep = ""))
+write.csv(df, paste(output_path,"df1000.csv", sep = ""))
 # save the seurat object
-saveRDS(seu, paste(output_path,"seu9000Feb24.RDS", sep = ""))
+
 
 
 
@@ -134,9 +152,9 @@ saveRDS(seu, paste(output_path,"seu9000Feb24.RDS", sep = ""))
 Read in the csv of the flow files processed and the seurat object
 
 ```{r}
-df.input <- read.csv("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/df9000Feb24.csv")
+df.input <- read.csv("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/df1000.csv")
 
-seu <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/seu9000Feb24.RDS")
+
 
 
 ```
@@ -144,18 +162,16 @@ seu <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analys
 Test Flowsom
 
 ```{r}
-
-output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/exp_clusters/flow/"
-
-
-flow.test <- explore_param(seu, #for phenograph and louvain only
-                          cluster_method = 'flowsom', #take 1 cluster method
-                          df_input= df.input, #needed  if input "flowsom"
-                          flow_k = c(3,5,10,20), #k for flowsom
-                          pheno_lou_kn = NULL, #kn for phenograph or louvain
-                          lou_resolution = NULL, #resolution for louvain
-                          run.plot = TRUE, #print if run
-                          run.stats = TRUE, #print and return if run
+# you need to load clustree for this to work right now 
+library(clustree)
+flow.test <- explore_param(input = seu,
+                          cluster_method = 'flowsom', 
+                          df_input= df.input, 
+                          flow_k = c(3,10,20),
+                          pheno_lou_kn = NULL, 
+                          lou_resolution = NULL, 
+                          run.plot = TRUE, 
+                          run.stats = TRUE, 
                           save_to = NULL)
 
 
@@ -164,64 +180,58 @@ flow.test <- explore_param(seu, #for phenograph and louvain only
 
 ```
 
-See Flowsom stats plots
-
-```{r}
-p1 <- stats_plot(stats_ls = flow.test,
-                       save_to = output_path,
-                       clust_method = "flowsom") 
-
-```
 
 Phenograph
 
 ```{r}
 
-output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/exp_clusters/pheno/"
-
 pheno.test <-  explore_param(seu, #for phenograph and louvain only
                           cluster_method = 'phenograph', #take 1 cluster method
                           df_input= df.input, #needed  if input "flowsom"
                           flow_k = NULL, #k for flowsom
-                          pheno_lou_kn = c(300,200,100), #kn for phenograph or louvain
+                          pheno_lou_kn = c(300,500), #kn for phenograph or louvain
                           lou_resolution = NULL, #resolution for louvain
                           run.plot = TRUE, #print if run
                           run.stats = TRUE, #print and return if run
                           save_to = NULL)
 
 ## clustree in phenograph doesn't make sense but I've included it to see it anyway
-#
+
 ### stats are now in a list
+
 
 ```
 
 ```{r}
-# try plot function for phenograph outputs
-stats_plot(stats_ls = pheno.test,
-                       save_to = output_path,
-                       clust_method = "phenograph") 
+
 
 
 ```
 
 
+
+```{r}
+
+# look at the intrinsic stats table
+pheno.test[[1]]
+
+
+```
 
 Test functions Louvain
 
 ```{r}
 
-output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/exp_clusters/seu/"
-
 # for best clustree visualization include resolution 0
 
 lou.test <- explore_param(input = seu, #for phenograph and louvain only
                           cluster_method = "louvain", #take 1 cluster method
-                          df_input = NULL, #needed  if input "flowsom"
+                          df_input = df.input, #needed  if input "flowsom"
                           flow_k = NULL, #k for flowsom
-                          pheno_lou_kn = c(200), #kn for phenograph or louvain
-                          lou_resolution = c(0,0.1,0.25,0.5), #resolution for louvain
+                          pheno_lou_kn = c(60), #kn for phenograph or louvain
+                          lou_resolution = c(0,0.25,0.5), #resolution for louvain
                           run.plot = TRUE, #print if run
-                          run.stats = FALSE, #print and return if run
+                          run.stats = TRUE, #print and return if run
                           save_to = NULL)
 
 # not - adjust font size in heatmaps
@@ -234,7 +244,7 @@ Check cluster stability - best resolution/cluster number/k value by calculating 
 
 ```{r}
 
-RI <- Rand_index(input = seu,
+RI <- clust_stability(input = seu,
                        resolutions = c(0.1,0.25,0.5,0.8,1),
                        kn = 60,
                        n = 10, #number of iterations
