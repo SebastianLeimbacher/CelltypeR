@@ -653,13 +653,11 @@ var_names <- c("unknown","astrocyte","epithelial","neurons 1",
                "endothelial", "npc","astrocytes")
 
 plotmean(plot_type = 'heatmap',seu = seu, group = 'CellType', markers = AB, 
-                     var_names = celltypes, slot = 'scale.data', xlab = "Cell Type",
+                     var_names = var_names, slot = 'scale.data', xlab = "Cell Type",
          ylab = "Antibody")
 
 
 
-express.by.cluster <- as.data.frame(AverageExpression(seu, features = AB,
-                                                        group.by = "CellType", slot = 'scale.data'))
 
 ```
 
@@ -667,25 +665,26 @@ express.by.cluster <- as.data.frame(AverageExpression(seu, features = AB,
 
 ```{r}
 # dot plot
-
+var_names <- c("unknown","astrocyte","epithelial","neurons 1",
+               "endothelial", "npc","astrocytes")
 
 
 # make sure the terms are exactly the same and you don't miss any
-new.order <- c("unknown", "astrocyte","epithelial",	"neurons 1",
-               "astrocyte","astrocyte", "endothelial","astrocyte",
-               "neurons 1", "npc", "endothelial","astrocyte")
+new.order <- c("astrocyte","astrocytes","endothelial","epithelial","neurons 1",
+               "npc","unknown")
 new.order <- rev(new.order)
 
 AB.order <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
 
 plotmean(plot_type = 'dotplot',seu = seu, group = 'CellType', markers = AB, 
-                     var_names = celltypes, slot = 'scale.data', xlab = "Cell Type",
+                     var_names = var_names, slot = 'scale.data', xlab = "Cell Type",
          ylab = "Antibody", var1order = new.order, var2order = AB.order)
 
 
 ```
 
-Statistics comparing groups
+# Statistics comparing groups
+
 
 
 ```{r}
@@ -711,7 +710,7 @@ df.for.stats <- Prep_for_stats(seu, marker_list = AB, variables = var.names,
 
 
 # save the csv for later
-write.csv(df.for.stats, "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/df4statsFeb26.csv")
+# write.csv(df.for.stats, paste(output_path,"filename.csv"))
 
 head(df.for.stats)
 
@@ -726,47 +725,85 @@ We want to compare each antibody separately for a given variable for each cell t
 
 ```{r}
 
-df.means <- df.for.stats %>% group_by(Sample, CellType, Marker) %>%
-  summarize(mean_value = mean(value), .groups = )
 
-head(df.means)
-dim(df.means)
+# one way anova (combine all antibodies)
+# two way anova variable 1 = antibody/marker variable 2 = group variable
 
-#%>% left_join(df.for.stats, by = c("Sample","CellType","Marker")) 
+# normally runs a loop across each cell type
+# option to select to calculate for all cell types together
 
-df_means <- df.for.stats %>%
-  group_by(Sample, CellType, Marker) %>%
-  mutate(mean_value = mean(value)) %>%
-  distinct(Sample, CellType, Marker, mean_value, .keep_all = TRUE) %>% select(-value)
+# can run the loop across antibodies
+
+# group variables we can run: Genotype, Batch, days in culture, Experiment date
+
+# we run one-way here with different conditions
+
+# compare genotypes for each cell type
+test.stats1 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellType","Marker","Genotype","Batch"),
+                     value_col = "value",
+                     stat_type = "ANOVA", id1 = 'Genotype', 
+                     id2 = NULL, use_means = TRUE,
+                     loop_by = "CellType")
+
+# see the dataframe results
+test.stats1[['ANOVA']]
+test.stats1[['TukeyHSD']]
 
 
-get_means <- function(df, group_cols, value_col) {
-  df_means <- df %>%
-    group_by(across(all_of(group_cols))) %>%
-    mutate(mean_value = mean(value)) %>%
-    distinct(across(all_of(group_cols)), mean_value, .keep_all = TRUE) %>%
-    select(-value)
-  return(df_means)
-}
+# Compare expression across cell types for each marker
+test.stats2 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellType","Marker","Genotype","Batch"),
+                     value_col = "value",
+                     stat_type = "ANOVA", id1 = 'Genotype', 
+                     id2 = NULL, use_means = TRUE,
+                     loop_by = "Marker")
 
-df_means <- get_means(df.for.stats, group_cols = c("Sample","CellType","Marker"), value_col = "value")
+test.stats2[['TukeyHSD']]
 
 
-head(df_means)
-dim(df_means)
+# compare Genotypes across all cell types and markers
+test.stats3 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellType","Marker"),
+                     value_col = "value",
+                     stat_type = "ANOVA", id1 = 'Genotype', 
+                     id2 = NULL, use_means = TRUE,
+                     loop_by = 'none')
+test.stats3[['TukeyHSD']]
+
+# compare genotype for each cell type without taking the group means and using each cell as an n (not good practice)
+test.stats4 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellType","Marker","Genotype","Batch"),
+                     value_col = "value",
+                     stat_type = "ANOVA", id1 = 'Genotype', 
+                     id2 = NULL, use_means = FALSE,
+                     loop_by = "CellType")
+
+
+```
+
+Test two way anova
+
+
+
+```{r}
+test.stats5 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellType","Marker","Genotype","Batch"),
+                     value_col = "value",
+                     stat_type = "ANOVA2", id1 = 'Genotype', 
+                     id2 = "Marker", use_means = TRUE,
+                     loop_by = "CellType")
+
+# see the relevant interactions Tukey's results
+
+df <- as.data.frame(test.stats1[["TukeyHSD"]][["Interactions_ Genotype"]])
+head(df)
+
+# now filter for significant differences
+
+df_sig <- df %>% filter(p.adj < 0.05)
+df_sig
 
 
 
 
 
 ```
-
-
-
-
-
-
-
 
 
 
