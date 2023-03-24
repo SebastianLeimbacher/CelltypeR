@@ -30,3 +30,8 @@ Install CelltypeR library using devtools
 ```
 devtools::install_github("RhalenaThomas/CelltypeR/CelltypeR")
 ```
+Load CelltypeR library
+
+```
+library("CelltypeR")
+```
