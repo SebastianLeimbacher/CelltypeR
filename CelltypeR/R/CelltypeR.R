@@ -1196,6 +1196,7 @@ RFM_predict <- function(seu, rf){
   colnames(df) <- AB
   # run the predictions
   rfm.pred <- as.data.frame(predict(rf,df))
+  return(rfm.pred)
 }
 
 
