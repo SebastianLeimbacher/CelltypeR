@@ -1023,7 +1023,7 @@ plot_corr <- function(df) {
 #'start_node: number of starting nodes in the trees.
 
 #' @export
-#' @import data.table randomForst caret
+#' @import data.table randomForest caret
 #' @importFrom randomForest randomForest
 #' @importFrom caret trainControl train
 
