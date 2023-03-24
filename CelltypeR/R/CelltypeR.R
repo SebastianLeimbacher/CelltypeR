@@ -1020,7 +1020,7 @@ plot_corr <- function(df) {
 
 #' @export
 #' @import data.table randomForest caret
-#' @importFrom randomForest randomForest
+#' @importFrom randomForest randomForest predict
 #' @importFrom caret trainControl train
 
 RFM_train <- function(seurate_object,
