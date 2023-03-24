@@ -604,10 +604,6 @@ louvain <- function(input, #seu object
 }
 
 
-
-
-
-
 # clust_stability
 
 
@@ -747,7 +743,7 @@ get_clusters <- function(seu, method = "louvain",
                          plots = TRUE,
                          save_plots = FALSE) {
   if(method == "louvain"){
-    seu <- FindNeighbors(seu, dims = 1:12, k.param = k)
+    seu <- FindNeighbors(seu, dims = 1:12, k.param = k, reduction = "pca")
     # must take one less than the number of antibodies
     seu <- FindClusters(seu, resolution = resolution)
     group_name <- "seurat_clusters"
@@ -833,7 +829,8 @@ get_clusters <- function(seu, method = "louvain",
 #' is the reference matrix, cell type by marker.
 
 #' @export
-#' @importFrom dplyr filter top_n
+#' @importFrom dplyr filter
+#' @importFrom kit topn
 find_correlation <- function(test,
                              reference,
                              min_corr = 0.1,
@@ -872,8 +869,8 @@ find_correlation <- function(test,
       corr <- cor(as.numeric(test[i,markers]), as.numeric(reference[j,markers])) # pearson by default and we use default
       corr_ls <- c(corr_ls, corr)
     }
-
-    top <- top_n(corr_ls, 2L) #return the index of the best 2
+    # topn is from the package kit
+    top <- topn(corr_ls, 2) #return the index of the best 2
     result <- c(result,
                 test[i, 'X'], #col 1: cell sample
                 corr_ls[top[1]], #col 2: 1st correlation
@@ -912,7 +909,7 @@ plot_corr <- function(df) {
   # filter to get frequency table and save as csv
   df.f <- df %>% select(cell.label)
   freq.table <- as.data.frame(table(df.f))
-  df.filter <- df %>% group_by(cell.label) %>% dplyr::filter(n()> 100)
+  df.filter <- df %>% group_by(cell.label) %>% dplyr::filter(n()> 400)
 
   # plot the frequencies
   plot1 <-
@@ -1348,32 +1345,27 @@ get_annotation <- function(seu, seu.cluster, seu.label, top_n = 3,
 
 
 
-
-
-
-## example
-# input arguments
-#seu.clusters <- seu.t$RNA_snn_res.0.8   # cluster resolution to label
-#seu.lable <- seu.t$cor.labels   # predicted labels per cell meta data slot
-# top number of cell type labels. This will only be for the printed table
-# the top most frequently label will be used for cluster annotation
-# ignore unknow is an option to filter out unknown cells and then the next more frequently
-# predicted cell type will be used.
-
-#ann_cor <- get_annotation(seu.t, seu.clusters, seu.lable, top_n = 3, ignore_unknown = FALSE)
-
-
-
 ##############################################################################################
 
-# cluster_annotate
-# input dfs of cluster annotation, at least 1 is required
-# dfs were created with get_annotation function
-# manual annotation can be df as well.  Make in excel read in csv or create
-# type manually, be careful to match syntax to the other predictions
-# input seurat data object
-# finds most common label per cluster and applies that label
 
+
+
+
+#' Add the consensus of annotations to a Seurat object from a list
+#'
+#'This function takes in a list of data frames with different annotation options.
+#'Use at least 2 options.  If you simple want to add annotations use "annotate",
+#'which is called by this function.The data frames can be created in R, read in
+#'from a csv of txt or created with the "get_annotations" function. All names are
+#'changed to lower case letters.  Cell type names must be exactly the same to match.
+#'For example "astrocytes" and "Astrocytes" will be considered the same, but
+#'"astrocytes" and "astrocyte" will not. The data slot to annotate must be indicated.
+#'To label the data slot with the consensus annotation set annotation_name. For example
+#'annotation_name = "CellTypeCon".
+
+#' @export
+#' @import dplyr
+#' @importFrom dplyr select
 
 cluster_annotate <- function(seu, ann.list,
                              annotation_name,
@@ -1386,10 +1378,9 @@ cluster_annotate <- function(seu, ann.list,
   df2 <- lapply(df.merge, function(x) {tolower(as.character(x))})
   # back into a dataframe
   df3 <- as.data.frame(do.call(cbind, df2))
-
-  df3$consensus <- apply(df3, 1, function(row) {
+  df3$consensus <- apply(df3[, -1], 1, function(row) {
     if (is.data.frame(row)) {
-      word_counts <- table(unlist(row[,2:ncol(row)]))
+      word_counts <- table(unlist(row))
     } else if (is.matrix(row)) {
       word_counts <- table(unlist(row))
     } else {
@@ -1412,7 +1403,17 @@ cluster_annotate <- function(seu, ann.list,
 }
 
 
+#' Add the annotations to a Seurat object
+#'
+#'This function takes in a column from a data frame or vector of cell type
+#'annotations. For example annotations = df$CellTypes or annotations = c("Neurons",
+#'"astrocytes","radial glia").The data slot to annotate must be indicated.
+#'To label the data slot with the consensus annotation set annotation_name.
+#'Default annotation_name = "CellType".
 
+#' @export
+#' @import Seurat
+#' @importFrom Seurat AddMetaData
 
 annotate <- function(seu, annotations, to_label, annotation_name = "CellType"){
   Idents(seu) <- to_label
@@ -1425,8 +1426,11 @@ annotate <- function(seu, annotations, to_label, annotation_name = "CellType"){
 
 ######### functions to compare groups in an annotated seurat object ################
 
+#' Plot barcharts of proportion of cell types grouped by a list of variables
+#'
+#'This function takes a Seurat object and creates a boxplot each variable in the list.
 
-# plotting function
+#' @export
 
 proportionplots <- function(seu, seu.var, seu.lable, groups = "Sample", my_colours= "default"){
   sample.lables <- as.data.frame(table(seu.var, seu.lable))
@@ -1459,7 +1463,7 @@ proportionplots <- function(seu, seu.var, seu.lable, groups = "Sample", my_colou
 
 }
 
-# run plotting function on list of variables
+# function called above
 
 plotproportions <- function(seu, var.list, xgroup, varnames, my_colours = 'default'){
   for (i in seq_along(var.list)) {
@@ -1468,27 +1472,29 @@ plotproportions <- function(seu, var.list, xgroup, varnames, my_colours = 'defau
   }
 }
 
-# var.list is a list defining seurat metadata slots
-# xgroup is the cell types or x axis grouping variable
-# varnames is a character vector of labels for the x axis of the plots
-# Example
-# plotproportions(seu.q, var.list = var.list, xgroup = seu.q$cell.types, varnames = varnames)
-# can input costume colours
-# later --- add in define sample order
 
-### dotplots and heatmaps mean expression by group
+#' Plot mean values by group in dotplot or heatmap
+#'
+#'This function takes a Seurat object and creates a heatmap or dotplot.
+#'This function takes a Seurat object and a list of variables to plot. One
+#'bar chart is created for each variable in the list.
+#'var.list is a list defining seurat metadata slots
+#'xgroup is the cell types or x axis grouping variable
+#'varnames is a character vector of labels for the x axis of the plots
+#'Example :plotproportions(seu.q, var.list = var.list, xgroup = seu.q$cell.types, varnames = varnames)
 
+#' @export
 plotmean <- function(plot_type = 'heatmap',seu, group, markers, var_names, slot = 'scale.data',
                      xlab = 'Cell Types', ylab = 'Antibodies', var1order, var2order){
   express.by.cluster <- as.data.frame(AverageExpression(seu, features = markers,
                                                         group.by = group, slot = 'scale.data'))
   express.by.cluster <- as.data.frame(scale(express.by.cluster))
-  if(length(var_names) < 0){
-    col.names <- colnames(express.by.cluster)
-  }else{
+  if(length(var_names) == length(express.by.cluster)){
     col.names <- var_names
+  }else{
+    col.names <- colnames(express.by.cluster)
   }
-  names(express.by.cluster) <- col.names
+  colnames(express.by.cluster) <- col.names
   AB <- row.names(express.by.cluster)
   ex.data <- cbind(AB,express.by.cluster)
   # must make a data table because melt is
@@ -1524,21 +1530,19 @@ plotmean <- function(plot_type = 'heatmap',seu, group, markers, var_names, slot 
   }
 }
 
-# compare groups functions
-
-# prep_for_stats
-# run_stats
-# make plots
-
-
 
 ##############################################################################################
-# prep_for_stats
-# input seurat object
-# arguments input all variable that might be compared and where to find these variables
-# Selects expression data from Seurat object organized by designated variables
 
-require(data.table)
+
+#' Prepare a data frame for statistics
+#'
+#'This function takes a Seurat object and creates a data frame with the expression
+#'values for each cell for each marker.  Columns are created for all the indicated
+#'variables.  All the variables must exist as meta data in the Seurat object.
+#'
+#' @export
+#' @import data.table
+#' @importFrom data.table melt
 
 Prep_for_stats <- function(seu, marker_list, variables, marker_name = 'Marker'){
   # create a dataframe with all the expresson data
@@ -1562,32 +1566,20 @@ Prep_for_stats <- function(seu, marker_list, variables, marker_name = 'Marker'){
 
 
 ##############################################################################################
-# run_stats
-# takes in dataframe from prep_for_stats
-# arguments, variables, level1, level2
-# runs 2way anova and posthoc tests
-# outputs tables in a list
-# anovas
-# posthoc tukey's main
-# tukey's interaction effects filtered matching sets of interest
-# tables  filtered by significance
 
+#' Run one-way or two-way ANOVAs and Tukey's HSD test
+#'
+#'This function takes a data frame prepared by "Prep_for_stats" and outputs
+#'a list of ANOVA and TUKEY results. For two-way ANOVAs, stat_type = "ANOVA2". The
+#'interaction effect is calculated.
+#' group_cols is a vector with the columns to get the means from if use_means = NULL
+#' the means will not be calculated and n = number of cells instead of samples per group.
+#'id1 is the independent variable to compare (dependent variable is the expression)
+#' id2 is for 2 way anova and should be Marker or Celltype but other options are possible.
+#' value_col is the column name with the expression values.  This only needs to be
+#' changed if the input data frame wasn't created with the "Prep_for_stats" function.
 
-### for using sample means
-
-
-# group_cols is a vector with the columns to get the means from
-# where id1 is the independent variable to compare (dependent variable is the expression)
-# id2 is for 2 way anova and should be Marker or Celltype,
-# but other options are possible
-
-
-
-
-
-## try getting results DF possible list of DF
-## new
-library(dplyr)
+#' @export
 run_stats <- function(input_df, group_cols = c("Sample", "CellType", "Marker"),
                       value_col = "value",
                       stat_type = "ANOVA",
@@ -1645,6 +1637,7 @@ run_stats <- function(input_df, group_cols = c("Sample", "CellType", "Marker"),
       for (i in var_list) {
         df <- df_means %>% filter(Marker == i)
         one_way <- aov(expression ~ df[[id1]], data = df)
+        output <- summary(one_way)
         aov.l[[as.character(i)]] <- output # Append output to list
         # now the posthoc test
         tukey <- TukeyHSD(one_way)
@@ -1763,6 +1756,8 @@ run_stats <- function(input_df, group_cols = c("Sample", "CellType", "Marker"),
 
       print(paste("TukeyHSD results for each cell type comparing ", id1,
                   "and ", id2))
+      output_list <- list(ANOVA = aov_df,TukeyHSD = tuk_summary.l)
+
     } else if (loop_by == "Marker") {
       var_list <- unique(df_means$Marker)
       # to store outputs and format in a readable way
@@ -1829,6 +1824,7 @@ run_stats <- function(input_df, group_cols = c("Sample", "CellType", "Marker"),
 
       print(paste("TukeyHSD results for each Marker comparing ", id1,
                   "and ", id2))
+      output_list <- list(ANOVA = aov_df,TukeyHSD = tuk_summary.l)
     } else {
       df <- df_means
       formula <- as.formula(paste0("expression ~ ", id1, "*", id2))
@@ -1876,9 +1872,9 @@ run_stats <- function(input_df, group_cols = c("Sample", "CellType", "Marker"),
         # add the filtered dataframe to have matching id1 or id2 contrasts
         tuk_summary.l[[paste("Interactions_",id2)]] <- filtered_df2
       }
-
       output_list <- list(ANOVA = aov_df,TukeyHSD = tuk_summary.l)
     }
+
     return(output_list)
   }
 }

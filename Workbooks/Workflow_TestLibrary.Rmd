@@ -750,16 +750,20 @@ test.stats1[['ANOVA']]
 test.stats1[['TukeyHSD']]
 
 
+
+```
+
+```{r}
 # Compare expression across cell types for each marker
 test.stats2 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellType","Marker","Genotype","Batch"),
                      value_col = "value",
                      stat_type = "ANOVA", id1 = 'Genotype', 
                      id2 = NULL, use_means = TRUE,
                      loop_by = "Marker")
-
 test.stats2[['TukeyHSD']]
+```
 
-
+```{r}
 # compare Genotypes across all cell types and markers
 test.stats3 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellType","Marker"),
                      value_col = "value",
@@ -767,7 +771,9 @@ test.stats3 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellT
                      id2 = NULL, use_means = TRUE,
                      loop_by = 'none')
 test.stats3[['TukeyHSD']]
+```
 
+```{r}
 # compare genotype for each cell type without taking the group means and using each cell as an n (not good practice)
 test.stats4 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellType","Marker","Genotype","Batch"),
                      value_col = "value",
@@ -775,14 +781,15 @@ test.stats4 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellT
                      id2 = NULL, use_means = FALSE,
                      loop_by = "CellType")
 
+test.stats4[[1]] # ANOVA
 
 ```
 
-Test two way anova
 
-
+Test two way ANOVAs
 
 ```{r}
+
 test.stats5 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellType","Marker","Genotype","Batch"),
                      value_col = "value",
                      stat_type = "ANOVA2", id1 = 'Genotype', 
@@ -791,7 +798,7 @@ test.stats5 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellT
 
 # see the relevant interactions Tukey's results
 
-df <- as.data.frame(test.stats1[["TukeyHSD"]][["Interactions_ Genotype"]])
+df <- as.data.frame(test.stats5[["TukeyHSD"]][["Interactions_ Genotype"]])
 head(df)
 
 # now filter for significant differences
@@ -801,12 +808,35 @@ df_sig
 
 
 
-
-
 ```
 
 
+```{r}
+test.stats6 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellType","Marker","Genotype","Batch"),
+                     value_col = "value",
+                     stat_type = "ANOVA2", id1 = 'Genotype', 
+                     id2 = "CellType", use_means = TRUE,
+                     loop_by = "Marker")
 
+
+# see the interactions Tukey's results where id1 or id2 match
+
+df <- as.data.frame(test.stats6[["TukeyHSD"]][["Interactions_ Genotype"]])
+head(df)
+
+# now filter for significant differences
+
+df_sig <- df %>% filter(p.adj < 0.05)
+df_sig
+
+df <- as.data.frame(test.stats6[["TukeyHSD"]][["Interactions_ CellType"]])
+head(df)
+# now filter for significant differences
+df_sig <- df %>% filter(p.adj < 0.05)
+df_sig
+
+
+```
 
 
 
@@ -822,16 +852,16 @@ Run in HPC with lots of cells
 ```{r}
 
 rf <- RFM_train(seurate_object = seu, 
-                             AB_list = AB, annotations = seu$CellType3,
+                             AB_list = AB, annotations = seu$CellType,
                       split = c(0.8,0.2),
-                      downsample = 20000,
+                      downsample = "none",
                       seed = 222,
                       mytry = c(1:10),
                       maxnodes = c(12: 25),
                       trees = c(250, 500, 1000,2000),
                       start_node = 15)
 
-save(rf, output_path,"trainedRFMFeb14.Rds")
+#save(rf, output_path,"trainedRFM.Rds")
 
 ```
 
