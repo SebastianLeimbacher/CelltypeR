@@ -12,6 +12,6 @@ Data folder with raw flow cytometry data (sample.fsc), reference matrix for corr
 
 # To install the CelltypeR library
 
-'''
+```
 devtools::install_github("RhalenaThomas/CelltypeR/CelltypeR")
-'''
+```
