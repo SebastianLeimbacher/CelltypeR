@@ -10,4 +10,4 @@ Workbooks for creation of figures.
 
 To install the CelltypeR library
 
-devtools::install_github("RhalenaThomas/CelltypeR")
+devtools::install_github("RhalenaThomas/CelltypeR/CelltypeR")
