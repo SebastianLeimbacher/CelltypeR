@@ -34,6 +34,7 @@ library(CelltypeR)
 
 ```
 
+
 # Preprocessing
 
 Read in the flow data
@@ -132,8 +133,7 @@ seu <- make_seu(df, AB_vector = AB)
 You can save the data frame and seurat object for later
 
 ```{r}
-# set a pathway to where you want to save the data
-output_path <- "/User/output/flow/"
+
 
 # to save the df for later
 write.csv(df, paste(output_path,"df1000.csv", sep = ""))
@@ -294,8 +294,8 @@ After checking parameters run cluster function to make add the clustering inform
 ```{r}
 
 seu <- get_clusters(seu, method = "louvain",
-                         df_input = NULL, #needed  if input "flowsom"
-                         k = 60, #k for flowsom or kn for Phenograph and Seurat Louvain
+                         df_input = df.input,
+                         k = 60,
                          resolution = 1,
                          plots = TRUE,
                          save_plots = FALSE)
@@ -353,8 +353,17 @@ myann <- c("unknown","glia",
            "NPC","endothelial",
            "astrocytes")
 
-df_man <- data.frame(Cluster = c(0:11), MyAnn = myann)
-df_man
+man.ann <- data.frame(Cluster = c(0:11), MyAnn = myann)
+man.ann
+
+man.ann$Cluster <- as.factor(man.ann$Cluster)
+man.ann$MyAnn <- as.factor(man.ann$MyAnn)
+man.ann
+
+```
+
+```{r}
+saveRDS(seu, paste(output_path, "Seurat_temp.RDS", sep = ""))
 
 ```
 
@@ -398,11 +407,11 @@ seu <- AddMetaData(object=seu, metadata=cor$cell.label, col.name = 'cor.labels')
 # see the labels added
 unique(seu$cor.labels)
 
-seu.cluster = seu$RNA_snn_res.0.8
+seu.cluster = seu$RNA_snn_res.1
 seu.labels = seu$cor.labels
 
 # plot the cluster predictions
-plot_lab_clust(seu, seu$RNA_snn_res.0.8, seu$cor.labels)
+plot_lab_clust(seu, seu$RNA_snn_res.1, seu$cor.labels)
 
 
 
@@ -413,14 +422,14 @@ Run get annotations function to return a vector of annotation in the order of th
 
 ```{r}
 
-cor.ann <- get_annotation(seu, seu.cluster = seu$RNA_snn_res.0.8, 
+cor.ann <- get_annotation(seu, seu.cluster = seu$RNA_snn_res.1, 
                           seu.label = seu$cor.labels, top_n = 3, 
                           filter_out = c("Unknown","unknown","Mixed"), 
                           Label = "CAM")
 cor.ann
 dim(cor.ann)
 
-cor.ann <- cor.ann[1:22,]
+cor.ann <- cor.ann[1:12,]
 dim(cor.ann)
 
 unique(cor.ann$CAM)
@@ -438,16 +447,18 @@ Training of the Random Forest model with an annotated data set is below.
 ```{r}
 
 # you must have a saved trained model from a data object annotated from the same markers
+# see the end of the workbook for how to train the model
 
 rf <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/PaperFigures/RFM_trained.11072022.Rds")
 
+AB <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
 
 rfm.pred <- RFM_predict(seu, rf)
 head(rfm.pred)
 
 # add the predictions into the seurat object
 
-seu <- AddMetaData(object=seu, metadata=rfm.pred$`predict(rf, df)`, col.name = 'rfm.labels')
+seu <- AddMetaData(object=seu, metadata=rfm.pred$rfm.labels, col.name = 'rfm.labels')
 
 # check that the data is added 
 table(seu$rfm.labels)
@@ -459,7 +470,7 @@ Get the annotation by cluster for the RFM
 
 ```{r}
 
-rfm.ann <- get_annotation(seu, seu$RNA_snn_res.0.8,seu$rfm.labels, 
+rfm.ann <- get_annotation(seu, seu$RNA_snn_res.1,seu$rfm.labels, 
                top_n = 3, filter_out = c("unknown","Unknown","Mixed","Mix"), Label = "RFM")
 rfm.ann
 
@@ -468,6 +479,7 @@ rfm.ann
 rfm.ann
 dim(rfm.ann)
 
+
 ```
 
 Plot RFM predictions
@@ -475,7 +487,7 @@ Plot RFM predictions
 ```{r}
 
 
-plot_lab_clust(seu, seu.cluster = seu$RNA_snn_res.0.8, seu.labels = seu$rfm.labels, filter_out = c("unknown","Unknown","Mixed"))
+plot_lab_clust(seu, seu.cluster = seu$RNA_snn_res.1, seu.labels = seu$rfm.labels, filter_out = c("unknown","Unknown","Mixed"))
 
 
 ```
@@ -511,10 +523,10 @@ seu <- seurat_predict(seu, seu.r, ref_id = 'subgroups', down.sample = 500, marke
 # plot the seurat anchor predictions
 # get the annotation table for the seurat anchor predictions 
 
-plot_lab_clust(seu, seu$RNA_snn_res.0.8, seu$seu.pred)
+plot_lab_clust(seu, seu$RNA_snn_res.1, seu$seu.pred)
 
 # to not filter anything use c()
-seu.ann <- get_annotation(seu, seu$RNA_snn_res.0.8,seu$seu.pred, 
+seu.ann <- get_annotation(seu, seu$RNA_snn_res.1,seu$seu.pred, 
                top_n = 3, filter_out = c(), Label = "Seurat")
 seu.ann
 
@@ -527,35 +539,15 @@ Get a consensus of cluster annotations, Add the annotations to the seurat object
 
 ```{r}
 
-# manual annotations
-# quick cheat just using the seurat labels to get a sting of annotations
-
-temp <- paste("'",as.character(seu.ann$Seurat), "'", collapse = ", ", sep = "" )
-
-my_ann <- c('Unknown', 'Radial Glia 1', 'Astrocytes 1', 'Mixed', 'Neurons 1', 'Neurons 2', 'Epithelial', 'Astrocytes mature', 'NPC', 'Radial Glia 2', 'Radial Glia 3', 'Endothelial', 'Epithelial', 'Neurons 3', 'Neurons 1', 'Astrocytes 2', 'Neurons 1', 'Unknown', 'Oligodendrocytes', 'Stem-like 1', 'Neural stem', 'Epithelial')
-cluster.n <- c(0:21)
-man.ann <- data.frame(cluster.n, my_ann)
-colnames(man.ann) <- c("Cluster","manual")
-
-# needs to be factors 
-man.ann <- data.frame(lapply(man.ann, factor))
-
-dim(man.ann)
-dim(cor.ann)
-dim(rfm.ann)
-dim(seu.ann)
-
-# the dataframes must be the same length
-
-# the annotation function takes in a list of the annotation dataframes
-
-ann.list <- list(man.ann,df.cor.ann,rfm.ann,seu.ann)
+# make a list of data frames
+# all the dataframes need to be as.factor
+ann.list <- list(cor.ann,rfm.ann,seu.ann, man.ann)
 
 # annotate the seurat object
 
-seu <- cluster_annotate(seu, ann.list, 
+seu <- cluster_annotate(seu, ann.list = ann.list, 
                         annotation_name ="CellType", 
-                        to_label = "RNA_snn_res.0.8")
+                        to_label = "RNA_snn_res.1")
 
 DimPlot(seu, group.by = "CellType")
 
@@ -566,36 +558,16 @@ Just use the annotate functions
 
 ```{r}
 
-seu <- annotate(seu, annotations = man.ann$manual, to_label = "RNA_snn_res.0.8", annotation_name = "MyCellType")
+seu <- annotate(seu, annotations = seu.ann$Seurat, to_label = "RNA_snn_res.1", annotation_name = "SeuratTransfer")
 
-DimPlot(seu, group.by = "MyCellType")
-
-```
-
-
-
-
-
-```{r}
-#save with the annotations
-saveRDS(seu,"/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/seu9000Feb24.RDS")
-
+DimPlot(seu, group.by = "SeuratTransfer")
 
 ```
 
+# Compare groups
 
-Compare groups
+We first need to add the variables into the seurat object that we want to compare.
 
-
-```{r}
-
-seu <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/seu9000Feb24.RDS")
-
-
-```
-
-
-Add the variables into the seurat object
 ```{r}
 Genotype <- c("3450","3450","3450","AIW002","AIW002","AIW002","AJG001C","AJG001C","AJG001C")
 ExDate <- c("0306","0317","0317","0306","0317","0317","0306","0317","0317")
@@ -642,7 +614,7 @@ seu$DaysinCulture <- Idents(seu)   # add a new dataslot
 
 ```
 
-Plots some variables
+Plots some variables to look for differences between groups
 
 ```{r}
 # one plot
@@ -671,38 +643,37 @@ plotproportions(seu, var.list = var.list, xgroup = seu$CellType, varnames = varn
 
 ```
 
-
-Heatmaps
+Make a heat map 
 
 ```{r}
 
-# make sure the order is correct
-celltypes <- c("unknown","radial glia 1", "astrocytes 1", "mixed","neurons 1",
-               "neurons 2", "epithelial", "astrocytes mature", "npc", "radial glia 2",
-               "radial glia 3", "endothelial","neurons 3", "astrocytes 2",
-               "oligodendrocytes", "stem-like 1","neural stem")
+# make sure the order is correct and there are only the amount of different cell types.  The order can be found in the dimplot above 
+
+var_names <- c("unknown","astrocyte","epithelial","neurons 1",
+               "endothelial", "npc","astrocytes")
 
 plotmean(plot_type = 'heatmap',seu = seu, group = 'CellType', markers = AB, 
                      var_names = celltypes, slot = 'scale.data', xlab = "Cell Type",
          ylab = "Antibody")
 
 
+
+express.by.cluster <- as.data.frame(AverageExpression(seu, features = AB,
+                                                        group.by = "CellType", slot = 'scale.data'))
+
 ```
+
+
+
 ```{r}
 # dot plot
 
-og.order <- c("unknown","radial glia 1", "astrocytes 1", "mixed","neurons 1",
-               "neurons 2", "epithelial", "astrocytes mature", "npc", "radial glia 2",
-               "radial glia 3", "endothelial","neurons 3", "astrocytes 2",
-               "oligodendrocytes", "stem-like 1","neural stem")
+
 
 # make sure the terms are exactly the same and you don't miss any
-new.order <- c("astrocytes 1","astrocytes 2","astrocytes mature",
-               "endothelial","epithelial", "mixed","neurons 1",
-               "neurons 2","neurons 3","neural stem","npc",
-               "oligodendrocytes",
-               "radial glia 1","radial glia 2","radial glia 3","stem-like 1",
-               "unknown")
+new.order <- c("unknown", "astrocyte","epithelial",	"neurons 1",
+               "astrocyte","astrocyte", "endothelial","astrocyte",
+               "neurons 1", "npc", "endothelial","astrocyte")
 new.order <- rev(new.order)
 
 AB.order <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")

@@ -604,10 +604,6 @@ louvain <- function(input, #seu object
 }
 
 
-
-
-
-
 # clust_stability
 
 
@@ -747,7 +743,7 @@ get_clusters <- function(seu, method = "louvain",
                          plots = TRUE,
                          save_plots = FALSE) {
   if(method == "louvain"){
-    seu <- FindNeighbors(seu, dims = 1:12, k.param = k)
+    seu <- FindNeighbors(seu, dims = 1:12, k.param = k, reduction = "pca")
     # must take one less than the number of antibodies
     seu <- FindClusters(seu, resolution = resolution)
     group_name <- "seurat_clusters"
@@ -833,7 +829,8 @@ get_clusters <- function(seu, method = "louvain",
 #' is the reference matrix, cell type by marker.
 
 #' @export
-#' @importFrom dplyr filter top_n
+#' @importFrom dplyr filter
+#' @importFrom kit topn
 find_correlation <- function(test,
                              reference,
                              min_corr = 0.1,
@@ -872,8 +869,8 @@ find_correlation <- function(test,
       corr <- cor(as.numeric(test[i,markers]), as.numeric(reference[j,markers])) # pearson by default and we use default
       corr_ls <- c(corr_ls, corr)
     }
-
-    top <- top_n(corr_ls, 2L) #return the index of the best 2
+    # topn is from the package kit
+    top <- topn(corr_ls, 2) #return the index of the best 2
     result <- c(result,
                 test[i, 'X'], #col 1: cell sample
                 corr_ls[top[1]], #col 2: 1st correlation
@@ -1386,10 +1383,9 @@ cluster_annotate <- function(seu, ann.list,
   df2 <- lapply(df.merge, function(x) {tolower(as.character(x))})
   # back into a dataframe
   df3 <- as.data.frame(do.call(cbind, df2))
-
-  df3$consensus <- apply(df3, 1, function(row) {
+  df3$consensus <- apply(df3[, -1], 1, function(row) {
     if (is.data.frame(row)) {
-      word_counts <- table(unlist(row[,2:ncol(row)]))
+      word_counts <- table(unlist(row))
     } else if (is.matrix(row)) {
       word_counts <- table(unlist(row))
     } else {
@@ -1483,12 +1479,12 @@ plotmean <- function(plot_type = 'heatmap',seu, group, markers, var_names, slot 
   express.by.cluster <- as.data.frame(AverageExpression(seu, features = markers,
                                                         group.by = group, slot = 'scale.data'))
   express.by.cluster <- as.data.frame(scale(express.by.cluster))
-  if(length(var_names) < 0){
+  if(length(var_names) < length(express.by.cluster)){
     col.names <- colnames(express.by.cluster)
   }else{
     col.names <- var_names
   }
-  names(express.by.cluster) <- col.names
+  colnames(express.by.cluster) <- col.names
   AB <- row.names(express.by.cluster)
   ex.data <- cbind(AB,express.by.cluster)
   # must make a data table because melt is
