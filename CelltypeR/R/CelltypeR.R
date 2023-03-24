@@ -1000,10 +1000,6 @@ plot_corr <- function(df) {
 
 
 ##############################################################################################
-# RFM_train
-# Input annotated FC dataset
-# Random Forest Model internally optimizing parameters and saving the best model.
-# requires randomForst, caret, data.table
 
 #' Train a Random Forest Classifier to predict cell types in a Seurat object
 #'
@@ -1182,10 +1178,7 @@ RFM_train <- function(seurate_object,
 
 
 ##############################################################################################
-# RFM_train
-# Input annotated FC dataset
-# Random Forest Model internally optimizing parameters and saving the best model.
-# requires randomForst, caret, data.table
+
 
 #' Predict cell types in a Seurat object with a trained Random Forest Model
 #'
@@ -1194,7 +1187,7 @@ RFM_train <- function(seurate_object,
 #'added as the metadata slot 'rfm.labels'.
 
 #' @export
-#' @import randomForst
+#' @import randomForest
 #' @importFrom randomForest predict
 #' @importFrom Seurat AddMetaData
 RFM_predict <- function(seu, rf){
