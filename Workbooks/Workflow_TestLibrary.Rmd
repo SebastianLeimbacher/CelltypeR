@@ -30,10 +30,11 @@ f. Add cluster annotations.
 library(Seurat)
 library(dplyr) 
 library(ggplot2)
-#library("CelltypeR")
+library(CelltypeR)
 
 ```
 
+# Preprocessing
 
 Read in the flow data
 This data should be the gated live cells.  
@@ -66,7 +67,6 @@ sampleNames(flowset)
 
 
 ```
-
 
 Harmonize data to remove batch or technical variation
 
@@ -113,9 +113,7 @@ plotdensity_flowset(flowset_align)
 
 ```
 
-Now we will make test out clustering.
-For Seurat clustering and Phenograph we will make the Seurat object
-Flowsome takes in the dataframe directly.
+
 
 
 ```{r}
@@ -131,18 +129,17 @@ seu <- make_seu(df, AB_vector = AB)
 
 
 ```
-Save dataframe and seurat object for later
+You can save the data frame and seurat object for later
 
 ```{r}
-
-output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/"
+# set a pathway to where you want to save the data
+output_path <- "/User/output/flow/"
 
 # to save the df for later
-# write.csv(df, "pathway/filename.csv")
-#write.csv(df, paste(output_path,"df9000Feb15.csv", sep = ""))
 write.csv(df, paste(output_path,"df1000.csv", sep = ""))
-# save the seurat object
 
+# save the seurat object
+saveRDS(seu, paste(output_path, "seuratObject1000.csv", sep = ""))
 
 
 
@@ -152,36 +149,57 @@ write.csv(df, paste(output_path,"df1000.csv", sep = ""))
 Read in the csv of the flow files processed and the seurat object
 
 ```{r}
-df.input <- read.csv("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/df1000.csv")
+df.input <- read.csv(paste(output_path, "df1000.csv", sep = ""))
 
-
-
+seu <- readRDS(paste(output_path, "seuratObject1000.csv", sep = ""))
 
 ```
+
+# Test out clustering methods
+1. Flowsom - requires the data frame from above
+2. Phenograph - requires Seurat object from above
+3. Louvain via Seurat - requires Seurat object from above
+
+To run intrinsic statistics we need the data frame for all clustering methods. 
+1. Silhouette score: -1 to 1.A value near -1 indicates a poor quality of the clusters a value near 1 indicates a good quality of the clusters.
+2. Calinski-Harabasz index: higher values indicate better quality clusters.
+3. Davies-Bouldin index: lower values indicate better clusters.  The min value is 0. 
+
+Note that even with only 1000 cells these processes are slow and if you want to test larger data sets use base R and HPC. 
+
 
 Test Flowsom
 
 ```{r}
-# you need to load clustree for this to work right now 
+
 library(clustree)
+
+# the lowest flow_k to use is 3
+
 flow.test <- explore_param(input = seu,
                           cluster_method = 'flowsom', 
                           df_input= df.input, 
-                          flow_k = c(3,10,20),
+                          flow_k = c(5,10,15,20),
                           pheno_lou_kn = NULL, 
                           lou_resolution = NULL, 
                           run.plot = TRUE, 
                           run.stats = TRUE, 
                           save_to = NULL)
 
+```
+Notice in the UMAPs and heatmaps a large amount of cells are all in one or two clusters and small amounts of cells going into small clusters.  This isn't good for us to label cell types. 
 
-
-
+```{r}
+# Look at the intrinsic statistics
+flow.test[[1]]
 
 ```
 
+The statistics indicate that the fewer the lowest K value has the best quality clusters. 
 
-Phenograph
+
+
+Test Phenograph clustering
 
 ```{r}
 
@@ -189,7 +207,7 @@ pheno.test <-  explore_param(seu, #for phenograph and louvain only
                           cluster_method = 'phenograph', #take 1 cluster method
                           df_input= df.input, #needed  if input "flowsom"
                           flow_k = NULL, #k for flowsom
-                          pheno_lou_kn = c(300,500), #kn for phenograph or louvain
+                          pheno_lou_kn = c(150,300,500), #kn for phenograph or louvain
                           lou_resolution = NULL, #resolution for louvain
                           run.plot = TRUE, #print if run
                           run.stats = TRUE, #print and return if run
@@ -197,17 +215,9 @@ pheno.test <-  explore_param(seu, #for phenograph and louvain only
 
 ## clustree in phenograph doesn't make sense but I've included it to see it anyway
 
-### stats are now in a list
 
 
 ```
-
-```{r}
-
-
-
-```
-
 
 
 ```{r}
@@ -217,28 +227,37 @@ pheno.test[[1]]
 
 
 ```
+The silhouette score and DBI are best for fewer kn = 500 but the CHI is best for kn = 300. The stats on contradicting.
 
-Test functions Louvain
+
+
+Test Louvain clustering
 
 ```{r}
 
 # for best clustree visualization include resolution 0
 
 lou.test <- explore_param(input = seu, #for phenograph and louvain only
-                          cluster_method = "louvain", #take 1 cluster method
-                          df_input = df.input, #needed  if input "flowsom"
-                          flow_k = NULL, #k for flowsom
-                          pheno_lou_kn = c(60), #kn for phenograph or louvain
-                          lou_resolution = c(0,0.25,0.5), #resolution for louvain
-                          run.plot = TRUE, #print if run
-                          run.stats = TRUE, #print and return if run
+                          cluster_method = "louvain", 
+                          df_input = df.input, 
+                          flow_k = NULL, 
+                          pheno_lou_kn = c(60, 200), 
+                          lou_resolution = c(0,0.25,0.5,0.8), 
+                          run.plot = TRUE, 
+                          run.stats = TRUE, 
                           save_to = NULL)
-
-# not - adjust font size in heatmaps
 
 
 
 ```
+
+```{r}
+lou.test[[1]]
+
+```
+The statistic differ for best clustering. 
+Overall the intrinsic statistics are not helpful for this data for choosing cluster conditions.  We decided to use the heatmaps and UMAPS for clusters that look best for annotation. We want clusters that are distinct from eachother on the UMAP and have clear markers on the heatmap. We then used the RAND Index to determine the final cluster conditions. 
+
 
 Check cluster stability - best resolution/cluster number/k value by calculating RAND Index and STD of cluster number
 
@@ -247,11 +266,10 @@ Check cluster stability - best resolution/cluster number/k value by calculating 
 RI <- clust_stability(input = seu,
                        resolutions = c(0.1,0.25,0.5,0.8,1),
                        kn = 60,
-                       n = 10, #number of iterations
-                       save_to = NULL  #if null, will not save seul, ril, ncl, rdf
-)
+                       n = 5, #number of iterations
+                       save_to = NULL)
 
-# it is recommended to run n= 100, however I ran only 10 here because it is long to calculate
+# it is recommended to run n= 100, however I ran only 5 here because it is long to calculate
 
 
 ```
@@ -270,21 +288,6 @@ plot_randindex(
 
 ```
 
-```{r}
- ## test RAND Index again with more res, less reps - add in the plotting
-
-# rename Rand_index as clust_stability
-
-RI <- Rand_index(input = seu,
-                       resolutions = c(0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.75,1,1.25,1.5),
-                       kn = 60,
-                       n = 2, #number of iterations
-                       save_to = NULL  #if null, will not save seul, ril, ncl, rdf
-)
-
-```
-
-
 
 After checking parameters run cluster function to make add the clustering information into the 
 
@@ -293,40 +296,15 @@ After checking parameters run cluster function to make add the clustering inform
 seu <- get_clusters(seu, method = "louvain",
                          df_input = NULL, #needed  if input "flowsom"
                          k = 60, #k for flowsom or kn for Phenograph and Seurat Louvain
-                         resolution = 0.5,
+                         resolution = 1,
                          plots = TRUE,
                          save_plots = FALSE)
-
-```
-
-```{r}
-seu <- get_clusters(seu, method = "flowsom",
-                         df_input = df.input, #needed  if input "flowsom"
-                         k = 12, #k for flowsom or kn for Phenograph and Seurat Louvain
-                         resolution = NULL,
-                         plots = TRUE,
-                         save_plots = FALSE) 
-
+# if save_plots is TRUE the feature plots will be save as 13 plots in one file. The UMAP with cluster numbers will also be saved.
 
 ```
 
 
-
-
-
-
-
-```{r}
-# save with graph
-saveRDS(seu,"/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/seu9000March08.RDS")
-
-
-
-```
-
-
-
-Annotate clusters
+# Annotate clusters
 1. Visualization for manual annotation. - output by clustering function
 2. CAM (Correlation assignment model) - requires reference matrix
 3. RFM (Random Forest Model) - requires annotated matching flow dataset
@@ -354,28 +332,33 @@ Some more visualization of expression values
 # summary heat map
 # use function plotmean
 
-length(unique(seu$RNA_snn_res.0.8))
-# there are 22 clusters
+length(unique(seu$RNA_snn_res.1))
+# 12 
+# if we want to plot by cluster we need a vector of from 0 to the n-1 clusters
+cluster.num <- c(0:11)
 
-cluster.num <- c(0:21)
-
-plotmean(plot_type = 'heatmap',seu = seu, group = 'RNA_snn_res.0.8', markers = AB, 
+plotmean(plot_type = 'heatmap',seu = seu, group = 'RNA_snn_res.1', markers = AB, 
                      var_names = cluster.num, slot = 'scale.data', xlab = "Cluster",
          ylab = "Antibody")
 
 
 ```
 
-
-
-
-
 ```{r}
+# predict cell type from looking at expression patterns
+myann <- c("unknown","glia",
+           "radial glia","neurons1", "radial glia",
+           "astrocytes","radial glia",
+           "astrocytes","neurons2",
+           "NPC","endothelial",
+           "astrocytes")
 
-output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/"
-saveRDS(seu, paste(output_path,"cluster9000.RDS"))
+df_man <- data.frame(Cluster = c(0:11), MyAnn = myann)
+df_man
 
 ```
+
+
 
 Predict cell annotations with CAM (Corralations assignment method)
 
@@ -387,7 +370,7 @@ reference_data <- read.csv(reference_path)
 
 cor <- find_correlation(df.input, 
                              reference_data, 
-                             min_corr = 0.5, 
+                             min_corr = 0.45, 
                              min_diff = 0.05)
 
 # creates a dataframe with cor1 cor2 and predicted cell type label

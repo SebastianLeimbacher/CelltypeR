@@ -622,6 +622,7 @@ louvain <- function(input, #seu object
 
 #' @export
 #' @importFrom Seurat FindNeighbors FindClusters RunUMAP
+#' @import flexclust randIndex
 
 clust_stability <- function(input,
                             resolutions,
@@ -832,7 +833,7 @@ get_clusters <- function(seu, method = "louvain",
 #' is the reference matrix, cell type by marker.
 
 #' @export
-#' @importFrom dplyr filter
+#' @importFrom dplyr filter top_n
 find_correlation <- function(test,
                              reference,
                              min_corr = 0.1,
@@ -872,7 +873,7 @@ find_correlation <- function(test,
       corr_ls <- c(corr_ls, corr)
     }
 
-    top <- topn(corr_ls, 2L) #return the index of the best 2
+    top <- top_n(corr_ls, 2L) #return the index of the best 2
     result <- c(result,
                 test[i, 'X'], #col 1: cell sample
                 corr_ls[top[1]], #col 2: 1st correlation

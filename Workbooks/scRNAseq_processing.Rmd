@@ -1,0 +1,753 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Samples were run in triplicate using Hashtag sequencing. 
+The 4 cell type samples were run in separate 10X lanes.  
+Cell Ranger was run for HTO demultiplexing.
+Seurat objects were created in a computer cluster. 
+
+Process each sorted sample
+
+```{r}
+pathway <- "/Users/rhalenathomas/Documents/Data/scRNAseq/PhenoID/scRNAseqSorted/objs/"
+
+Neurons1 <- readRDS(paste(pathway,"seu1.rds",sep = ""))
+Neurons2 <- readRDS(paste(pathway,"seu2.rds",sep = ""))
+Glia1 <- readRDS(paste(pathway,"seu3.rds",sep = ""))
+Glia2 <- readRDS(paste(pathway,"seu4.rds",sep = ""))
+
+Neurons1
+Neurons2
+Glia1   #-Astrocytes
+Glia2   #-Radial Glia
+
+
+```
+
+Check QC
+
+```{r}
+library(Seurat)
+
+VlnPlot(Neurons1, pt.size = 0.10, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+VlnPlot(Neurons1, pt.size = 0.10, features = c("nFeature_RNA"), y.max = 1000)
+VlnPlot(Neurons2, pt.size = 0.10, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+VlnPlot(Glia1, pt.size = 0.10, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+VlnPlot(Glia2, pt.size = 0.10, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+
+
+```
+
+
+
+Filter
+
+```{r}
+
+Neuron1.ft <- subset(Neurons1, subset = nFeature_RNA > 250 & nCount_RNA < 10000)
+
+
+Neuron2.ft <- subset(Neurons2, subset = nFeature_RNA > 350 & nCount_RNA > 250 & nCount_RNA < 10000) 
+
+
+Glia1.ft <- subset(Glia1, subset = nFeature_RNA > 500 & nCount_RNA > 500 & nCount_RNA < 10000) 
+
+
+Glia2.ft <- subset(Glia2, subset = nFeature_RNA > 300 & nCount_RNA > 500 & nCount_RNA < 10000) 
+
+
+Neuron1.ft
+Neuron2.ft
+Glia1.ft
+Glia2.ft
+
+
+```
+
+Remove doublets from each Sorted population
+
+```{r}
+suppressMessages(require(DoubletFinder))
+
+```
+
+
+
+
+```{r}
+# Neurons1
+seu.d <- Neuron1.ft
+seu.d <- NormalizeData(seu.d)
+seu.d = FindVariableFeatures(seu.d, verbose = F)
+seu.d = ScaleData(seu.d, vars.to.regress = c("nFeature_RNA", "percent.mt"),
+    verbose = F)
+seu.d = RunPCA(seu.d, verbose = F, npcs = 20)
+seu.d = RunUMAP(seu.d, dims = 1:10, verbose = F)
+
+# starts with 1833 cells 
+nExp <- round(ncol(seu.d) * 0.013)  # expect close to 1.3doublets
+seu.d <- doubletFinder_v3(seu.d, pN = 0.25, pK = 0.09, nExp = nExp, PCs = 1:10)
+
+
+# name of the DF prediction can change, so extract the correct column name.
+DF.name = colnames(seu.d@meta.data)[grepl("DF.classification", colnames(seu.d@meta.data))]
+seu.d <- seu.d[, seu.d@meta.data[, DF.name]== "Singlet"]
+dim(seu.d)
+
+Neurons1 <- seu.d
+
+
+```
+
+```{r}
+# Neurons2
+seu.d <- Neuron2.ft  # starting 10162 cells
+seu.d <- NormalizeData(seu.d)
+seu.d = FindVariableFeatures(seu.d, verbose = F)
+seu.d = ScaleData(seu.d, vars.to.regress = c("nFeature_RNA", "percent.mt"),
+    verbose = F)
+seu.d = RunPCA(seu.d, verbose = F, npcs = 20)
+seu.d = RunUMAP(seu.d, dims = 1:10, verbose = F)
+
+nExp <- round(ncol(seu.d) * 0.076)  # expect 7.6% doublets for 
+seu.d <- doubletFinder_v3(seu.d, pN = 0.25, pK = 0.09, nExp = nExp, PCs = 1:10)
+
+
+# name of the DF prediction can change, so extract the correct column name.
+DF.name = colnames(seu.d@meta.data)[grepl("DF.classification", colnames(seu.d@meta.data))]
+seu.d <- seu.d[, seu.d@meta.data[, DF.name]== "Singlet"]
+dim(seu.d)
+
+Neurons2 <- seu.d
+
+```
+
+Astrocytes has too many cells Demultiplex with hashtags
+
+```{r}
+
+DefaultAssay(Glia1.ft) <- 'HTO'
+ht <- HTODemux(Glia1.ft, positive.quantile = 0.98)
+table(ht$HTO_classification.global)
+table(ht$HTO_classification)
+table(ht$hash.ID)
+RidgePlot(ht, assay = "HTO", group.by = "HTO_maxID", features = rownames(ht[["HTO"]]), log = TRUE)
+# perhaps I put the wrong hashtags in the compute canada pipeline
+
+VlnPlot(ht, assay = "RNA", group.by = 'hash.ID', features = "nFeature_RNA")
+
+# one of the replicates isn't represented labelled or not recognize well
+# I'll select the two reps with clear hashtags
+
+
+Idents(ht) <- 'hash.ID'
+glia1.temp <- subset(ht, idents = c("B0252-TotalSeqB","B0251-TotalSeqB"))
+dim(glia1.temp)
+
+
+
+
+```
+
+
+
+In this case some doublets will already be removed
+
+```{r}
+# Glia 1 astrocytes  8678 cells
+
+DefaultAssay(glia1.temp) <- "RNA"
+seu.d <- glia1.temp
+seu.d <- NormalizeData(seu.d)
+seu.d = FindVariableFeatures(seu.d, verbose = F)
+seu.d = ScaleData(seu.d, vars.to.regress = c("nFeature_RNA", "percent.mt"),
+    verbose = F)
+seu.d = RunPCA(seu.d, verbose = F, npcs = 20)
+seu.d = RunUMAP(seu.d, dims = 1:10, verbose = F)
+
+nExp <- round(ncol(seu.d) * 0.064)  # expect 6.4% doublets input of 13000 cells
+seu.d <- doubletFinder_v3(seu.d, pN = 0.25, pK = 0.09, nExp = nExp, PCs = 1:10)
+
+
+# name of the DF prediction can change, so extract the correct column name.
+DF.name = colnames(seu.d@meta.data)[grepl("DF.classification", colnames(seu.d@meta.data))]
+seu.d <- seu.d[, seu.d@meta.data[, DF.name]== "Singlet"]
+dim(seu.d)
+
+Astrocytes <- seu.d
+
+```
+
+Glia2 - Radial Glia, low CD44 in the FACS sort.
+
+```{r}
+
+seu.d <- Glia2.ft   # 5000 cells 
+seu.d <- NormalizeData(seu.d)
+seu.d = FindVariableFeatures(seu.d, verbose = F)
+seu.d = ScaleData(seu.d, vars.to.regress = c("nFeature_RNA", "percent.mt"),
+    verbose = F)
+seu.d = RunPCA(seu.d, verbose = F, npcs = 20)
+seu.d = RunUMAP(seu.d, dims = 1:10, verbose = F)
+
+nExp <- round(ncol(seu.d) * 0.039)  # expect 6% doublets 5000 cells 
+seu.d <- doubletFinder_v3(seu.d, pN = 0.25, pK = 0.09, nExp = nExp, PCs = 1:10)
+
+
+# name of the DF prediction can change, so extract the correct column name.
+DF.name = colnames(seu.d@meta.data)[grepl("DF.classification", colnames(seu.d@meta.data))]
+seu.d <- seu.d[, seu.d@meta.data[, DF.name]== "Singlet"]
+dim(seu.d)
+
+RadialGlia <- seu.d
+
+```
+
+
+Annotate the cell types in each Flow population
+
+```{r}
+
+# Neurons 1
+seu <- NormalizeData(Neurons1, normalization.method = "LogNormalize", scale.factor = 10000)
+Idents(seu) <- 'orig.ident'
+seu$orig.ident <- 'Neurons1'
+dim(seu)
+
+seu <- FindVariableFeatures(seu, selection.method = "vst", nfeatures = 2000)
+seu <- ScaleData(seu)
+seu <- RunPCA(seu)
+seu <- RunUMAP(seu, reduction = "pca", n.neighbors = 43, dims = 1:30)
+DimPlot(seu, reduction = "umap")
+
+
+
+
+```
+
+
+
+
+
+
+
+Rename Idents to prepare to merge
+
+
+```{r}
+
+Idents(Neurons1) <- 'orig.ident'
+Neurons1$orig.ident <- 'Neurons1'
+
+
+Idents(Neurons2) <- 'orig.ident'
+Neurons2$orig.ident <- 'Neurons2'
+
+Idents(Astrocytes) <- 'orig.ident'
+Astrocytes$orig.ident <- 'Astroctyes'
+Idents(RadialGlia) <- 'orig.ident'
+RadialGlia$orig.ident <- 'RadialGlia'
+
+
+# downsample the Neurons2, Astrocytes and Radial Glia
+Neurons2.sub <- subset(Neurons2, downsample = 2000)
+Neurons2.sub
+Idents(Neurons2.sub) <- 'orig.ident'
+Astro.sub <- subset(Astrocytes, downsample = 2000)
+Astro.sub
+Idents(Astro.sub) <- 'orig.ident'
+RG.sub <- subset(RadialGlia, downsample = 2000)
+RG.sub
+Idents(RG.sub) <- 'orig.ident'
+sorted.merge <- merge(Neurons1, y=c(Neurons2.sub,Astro.sub,RG.sub), add.cell.ids = c("Neurons1","Neurons2","Astrocytes","RadialGlia"), project = "SortedCells")
+
+
+```
+
+```{r}
+
+
+```
+
+
+Cluster merge object 
+
+```{r}
+
+seu <- sorted.merge
+
+seu <- NormalizeData(seu, normalization.method = "LogNormalize", scale.factor = 10000)
+seu <- FindVariableFeatures(seu, selection.method = "vst", nfeatures = 2000)
+seu <- ScaleData(seu)
+seu <- RunPCA(seu)
+ElbowPlot(seu, ndims = 30)
+seu <- RunUMAP(seu, dim = 1:18, n.neighbors = 43)
+
+DimPlot(seu)
+
+```
+
+
+
+
+
+Rename all the subtypes of cells
+
+```{r}
+
+Idents(seu.sc) <- 'Cell_Subtypes'
+
+cluster.ids <- c("Astrocytes-immature","Neurons-Endocrine","RadialGlia-VZ",
+                 "Neurons-Excitatory","Astrocytes-reactive","Neurons-GABAergic",
+                 "RadialGlia-SVZ","Neurons-Glutamatergic","Astrocytes-resting",
+                 "Neurons-Mature","RadialGlia-outer","DANeurons-VTA",
+                 "Neurons_stem_potential","Mix","NPC",
+                 "Neurons-5HT", "DANeurons-VM","DANeurons-SN",
+                 "RadialGlia-NSC","RadiaGlia-proliferating","RadiaGlia-proliferating"
+                 )
+
+names(cluster.ids) <- levels(seu.sc)
+seu.sc <- RenameIdents(seu.sc, cluster.ids)
+seu.sc$Subtypes <- Idents(seu.sc) 
+DimPlot(seu.sc, group.by = "Subtypes", label = TRUE)
+DimPlot(seu.sc, group.by = "Subtypes", label = FALSE)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Make a heatmap
+
+```{r}
+
+# some DA classic marker
+# some neuronal markers
+# some 
+PD_poulin = c("TH","SLC6A3","SLC18A2","SOX6","NDNF","SNCG","ALDH1A1","CALB1","TACR2","SLC17A6","SLC32A1","OTX2","GRP","LPL","CCK","VIP")
+
+#likely too many
+ft <- c("COL3A1","FABP5","HPD","RAB3B","TPBG","TTR","SOX2","ASCL1","CP","GRIA2",
+        "MGP","SPARCL1","TPH1","TFPI1","CY1B1","NEAT1","PTN","RPL41","TOP2A","VCAN")
+
+# to change the cell type order
+Idents(seu.sc) <- 'Cell_Subtype_Markers'
+
+
+
+seu.sc$Cell_Subtype_Markers <- factor(seu.sc$Cell_Subtype_Markers, levels = sample.order)
+
+#seu.sc <- ScaleData(seu.sc)
+#DoHeatmap(seu.sc, features = PD_poulin, group.by = 'Cell_Subtype_Markers', slot = 'scale.data')
+DotPlot(seu.sc, features = ft, group.by = 'Cell_Subtype_Markers') +
+  theme(axis.text.x = element_text(angle = 90))
+
+# these are not very helpful markers 
+# need to reverse sample order for heatmaps
+DoHeatmap(seu.sc, features = ft, group.by = 'Cell_Subtype_Markers')
+
+ft = c()
+
+feature_list = c("PAX6","OTX2","VIM","SLC1A3","SOX2","HES1","NES","S100B","SOX9","MAP2",
+                 "NCAM1","CD24","GRIA2","GABBR1")
+
+feature_list = c("TH","PAX6","OTX2","MAP2","NCAM1","CD24","GRIA2","GABBR1",
+                 "VIM","SLC1A3","SOX2","HES1","NES","S100B","SOX9","GFAP"
+                 )
+
+#"GRIA2","GABBR1"
+
+feature_list = c("MAP2","NCAM1","CD24","GRIA2")
+
+feature_list = c("MAP2","NCAM1","CD24","GRIA2","GRIN2B",,"GAD1","GAD2","GABRA1","GABRB2","TH","ALDH1A1","LMX1B","NR4A2","CORIN","CALB1","KCNJ6","CXCR4","ITGA6","SLC1A3","CD44","AQP4","S100B", "PDGFRA","OLIG2","MBP","CLDN11","VCAM1")
+"SOX9"
+feature_list <- c("RBFOX3","GRIN2B","GAD1","GAD2","GABRA1","GABRB2","TH")
+
+feature_list <- c("SLC1A3", "PAX6", "SOX2", "PDGFD", "GLI3", "STMN2", "NEUROD6", "VIM", "HES1")
+
+DotPlot(seu.sc, features = feature_list, group.by = 'Cell_Subtype_Markers') +
+  theme(axis.text.x = element_text(angle = 90))
+
+# these are not very helpful markers 
+# need to reverse sample order for heatmaps
+DoHeatmap(seu.sc, features = feature_list, group.by = 'Cell_Subtype_Markers')
+
+
+```
+
+Heatmap or Dotplot 
+Save pdf
+
+
+```{r}
+
+feature_list = c("TH","PAX6","OTX2","MAP2","NCAM1","CD24","GRIA2","GABBR1",
+                 "VIM","SLC1A3","SOX2","HES1","NES","S100B","SOX9"
+                 )
+
+feature_list.d = c("PAX6","VIM","SLC1A3","SOX2","HES1","NES","OTX2",
+                 "MAP2","NCAM1","CD24","GRIA2","GABBR1","S100B","SOX9"
+                 )
+
+
+DotPlot(seu.sc, features = feature_list.d, group.by = 'Cell_Subtype_Markers') +
+  theme(axis.text.x = element_text(angle = 90))
+
+DotPlot(seu.sc, features = "TH", group.by = 'Cell_Subtype_Markers') +
+  theme(axis.text.x = element_text(angle = 90))
+# these are not very helpful markers 
+# need to reverse sample order for heatmaps
+
+sample.order.r <- rev(sample.order)
+
+seu.sc$Cell_Subtype_Markers <- factor(seu.sc$Cell_Subtype_Markers, levels = sample.order.r)
+
+
+# save the dotplots
+pdf(paste(output_path,"DotPlotCellSubtypesOct17.pdf"))
+DotPlot(seu.sc, features = feature_list.d, group.by = 'Cell_Subtype_Markers') +
+  theme(axis.text.x = element_text(angle = 90))
+dev.off()
+
+pdf(paste(output_path,"DotPlotTHbysubtypesOct17.pdf"))
+DotPlot(seu.sc, features = "TH", group.by = 'Cell_Subtype_Markers') +
+  theme(axis.text.x = element_text(angle = 90))
+dev.off()
+
+```
+
+
+
+Make a label level of main cell types from the merge data
+
+```{r}
+
+unique(seu.sc$Cell_Subtype_Markers)
+Idents(seu.sc) <- 'Cell_Subtype_Markers'
+
+cluster.ids <- c("Astrocytes","Neurons","RadialGlia","Neurons",
+                 "Astrocytes","Neurons","RadialGlia","Neurons",
+                 "Astrocytes","Neurons","RadialGlia",
+                 "DANeurons","Neurons","Mix","NPC",
+                 "Neurons","DANeurons","DANeurons",
+                 "RadialGlia","RadialGlia","RadialGlia"
+                 )
+
+
+names(cluster.ids) <- levels(seu.sc)
+seu.sc <- RenameIdents(seu.sc, cluster.ids)
+seu.sc$Cell_Type2 <- Idents(seu.sc)
+Idents(seu.sc) <- 'Cell_Type2'
+DimPlot(seu.sc)
+
+DimPlot(seu.sc, group.by = 'Cell_Subtype_Markers')
+DimPlot(seu.sc, group.by = 'Cell_Subtypes')
+DimPlot(seu.sc, group.by = 'Cell_Type2')
+
+
+```
+
+
+
+
+
+
+
+
+DA subtyping
+
+
+
+```{r}
+
+DimPlot(seu.da, group.by = 'Subtypes', split.by = 'orig.ident')
+#FeaturePlot(seu.da, features = )
+
+
+
+
+```
+
+
+Kamath marker list
+
+Kamath DA markers and subtype markers
+
+
+```{r}
+DA <- c("TH", "SLC18A2","SLC6A3")
+DAsub <- c("SOX6","CALB1","TMEM200A", "AGTR1", "SYNPR", "FAM19A4", "PART1", 
+           "DDT", "GFRA2", "CALCR", "CRYM", "CCDC68", "PPR1R17", "RBP4", "GEM", "TRHR")
+
+DAmarkers <- c("PBX1","PITX3","BNC2","SLCA3","KCNJ6","LMO3","DLDH1A1")
+
+# transcription factors - top3 per subtype
+DAsub.top3 <- c("SOX6","CUX2", "ZNF91", "ANXA1","SMAD1","UBTF","NFE2L1", "NPDC1",
+                "BCL11A","PPARG","POU3F1","RUNX2","PBX3","LMX1B","TCF12", "EN2",
+                "OTX2", "MYLK","JUND","RAD21","CEBPZ","OTX1","TRPS1","SMAD9","POU2F2")
+
+Idents(seu.da) <- 'Subtypes'
+DoHeatmap(seu.da, features = DAsub, slot = 'counts')
+DefaultAssay(seu.da) <- 'RNA'
+seu.da <- ScaleData(seu.da, features = rownames(seu.da))
+DoHeatmap(seu.da, features = DAsub, slot = 'data')
+
+# better visualize the low expression markers 
+markers2 <- c("TMEM200A", "AGTR1", "SYNPR", "PART1", 
+           "GFRA2", "CALCR", "CRYM", "CCDC68", "PPR1R17", "RBP4", "GEM", "TRHR")
+
+
+DoHeatmap(seu.da, features = DAsub, slot = 'scale.data')
+DotPlot(seu.da, features = DAsub) + RotatedAxis()
+DotPlot(seu.da, features = markers2) + RotatedAxis()
+DoHeatmap(seu.da, features = DAsub.top3, slot = 'scale.data')
+DotPlot(seu
+Lets see some expression of the Kamath subgroup markers on the DimPlot
+
+```{r}
+FeaturePlot(seu.da, features = c("SOX6","CALB1","DDT", "RBP4"))
+FeaturePlot(seu.da, features = c("FAM19A4","OTX2","JUND","UBTF"))
+
+```
+
+Known SN vs DA markers from Poulin 2014 extended data
+
+```{r}
+
+SNmarkers <- c("ALDH1FA2", "FGF1", "GAD1", "GRIN2C", "GUCY2C", "IGF1", "KCNJ6",
+               "KCNS3", "NRIP3","OXR1", "PVALB", "RAB3C", "SATB1", "SLC6A1",
+               "SNCG", "SOX6", "ZDHHC2", "DRD2")
+
+VTAmarkers <- c("CALB1", "CALB2", "CARTPT", "CCK", "FXD1", "GRP", 
+                "LPL", "NEFM","NTF3", "OTX2","PARM1","EFNB3", "FZD1", "SDC2",
+                "SLIT2", "VIP", "ADCYAP1","BMP2","CLIC5","EGR1", "MARCKS",
+                "SLC17A6","TACR3", "VGF")
+
+markers <- c(SNmarkers, VTAmarkers)
+
+DotPlot(seu.da, features = markers) + RotatedAxis()
+DotPlot(seu.da, features = SNmarkers) + RotatedAxis()
+DotPlot(seu.da, features = VTAmarkers)+ RotatedAxis()
+
+DoHeatmap(seu.da, features = markers)
+
+```
+
+
+
+Poulin Review
+
+```{r}
+# main markers
+
+# VGLUT2 is SLC17A6
+# VGAT (GABA transporter) is SLC32A1
+
+subgroups <- c("SOX6", "ALDH1A1", "SLC17A6", "SLC32A1", "OTX2", "VIP")
+subgroups <- c("SOX6", "ALDH1A1", "SLC17A6", "SLC32A1", "VIP")
+DotPlot(seu.da, features = subgroups) + RotatedAxis()
+
+
+```
+
+DAT and TH expression?
+(Dat/Slc6a3)
+
+
+```{r}
+
+DotPlot(seu.da, features = c("TH","SLC6A3"))
+DoHeatmap(seu.da, features = c("TH","SLC6A3"))
+
+
+```
+
+
+Some more markers from Poulin Review and Paper (2014)
+
+```{r}
+
+ft <- c("ALDH1A1","SOX6","NDNF","CALB1","ADCYAP1","VIP","OTX2")
+DotPlot(seu.da, features = ft)
+DoHeatmap(seu.da, features = ft)
+
+```
+
+
+iPSC DA culture markers and subtype markers
+
+```{r}
+
+da.markers <- c("SYT1","DCX")
+mat.neur <- c("MAP2", "SNAP25")
+da.lineage <- c("PBX1","KCNJ6")
+
+ft <- c(da.markers, mat.neur, da.lineage)
+DotPlot(seu.da, features = ft)
+DoHeatmap(seu.da, features = ft)
+
+
+
+```
+
+Early vs mature DA markers
+https://doi.org/10.1242/dev.200504
+
+```{r}
+
+early <- c("SOX2","EN1","SOX6","TH")
+late <- c("SLC18A2","SLC6A3")  # VMAT2 and DAT
+
+ft <- c(early, late)
+
+DotPlot(seu.da, features = ft)
+DoHeatmap(seu.da, features = ft)
+ft <- c(late)
+
+DotPlot(seu.da, features = ft)
+DoHeatmap(seu.da, features = ft)
+
+```
+
+Pix3 required for SN DA neuron development in mice
+https://www.sciencedirect.com/science/article/pii/S0012160613001942?via%3Dihub
+
+.da, features = DAsub.top3) + RotatedAxis()
+DotPlot(seu.da, features = DAmarkers) + RotatedAxis()
+
+
+
+Otx2 was shown to regulate subtype identity in the VTA by antagonising the expression of Girk2 and DAT, and was also shown to antagonise the neurotoxic effect of the MPTP in these VTA neurons (Di Salvio et al., 2010a).
+
+```{r}
+# PIX3 and downstream   Chrna3 and Chrnb6 - cholinergic receptors
+# EphrinB2 higher expression in SN
+sn <- c("PITX3", "BDNF", "CHRNA3","CHRNB6","EFNB2")
+vta <- c("OTX2","KCNJ6","SLC6A3","MPTP")  # DAT SLC6A3 - OTX suppresses DAT and MPTP and GIRK2 (KCNJ6)
+
+ft <- c(sn,vta)
+
+DotPlot(seu.da, features = ft)
+DoHeatmap(seu.da, features = ft)
+
+```
+
+Tiklová, K., Björklund, Å.K., Lahti, L. et al. Single-cell RNA sequencing reveals midbrain dopamine neuron diversity emerging during mouse brain development. Nat Commun 10, 581 (2019). https://doi.org/10.1038/s41467-019-08453-1
+
+```{r}
+
+# all groups - higher in AT-Dat-high, is supposed to be N-Dat low
+# group by marker set
+
+one <- c("TH","SLC6A3","SLC18A2","DDC","LMX1A","LMX1B","PITX3","NR4A2",
+         "FOXA1","FOXA2","FOXP2","EN1")
+# also in N-data-low
+two <- c("NXPH4","NFIA","C1QL1","FAM19A2","LYPD1","CAR1O")
+
+three <- c("GAD2","SLC32A1","WNT7B","EBF3","CRHBP","PLCL1")
+
+four <- c("DLK1","SLC10A4","CCK","ZFHX3","DRD2","GRIK3")
+
+five <- c("SNCG","NPW","UNC5D","VWC2L","RPRM", "GUCY2C")
+
+six <- c("ALDH1A1","NRP1","KCNAB1","GRP","LPL","MOB3B")
+
+seven <- c("VIP","ID4","GIPR","POU2F2","TDH","ZFP804A")
+
+ft <- c(one)
+DotPlot(seu.da, features = ft) + RotatedAxis() + ggtitle("module one")
+DoHeatmap(seu.da, features = ft)+ ggtitle("module one")
+
+ft <- c(two)
+DotPlot(seu.da, features = ft)+ RotatedAxis() + ggtitle("module two")
+DoHeatmap(seu.da, features = ft) + ggtitle("module two")
+
+ft <- c(three)
+DotPlot(seu.da, features = ft)+ RotatedAxis() + ggtitle("module 3")
+DoHeatmap(seu.da, features = ft) + ggtitle("module 3")
+
+ft <- c(four)
+DotPlot(seu.da, features = ft)+ RotatedAxis() + ggtitle("module 4")
+DoHeatmap(seu.da, features = ft) + ggtitle("module 4")
+
+ft <- c(five)
+DotPlot(seu.da, features = ft)+ RotatedAxis() + ggtitle("module 5")
+DoHeatmap(seu.da, features = ft) + ggtitle("module 5")
+
+ft <- c(six)
+DotPlot(seu.da, features = ft)+ RotatedAxis() + ggtitle("module 6")
+DoHeatmap(seu.da, features = ft)+ ggtitle("module 6")
+
+ft <- c(seven)
+DotPlot(seu.da, features = ft)+ RotatedAxis() + ggtitle("module 7")
+DoHeatmap(seu.da, features = ft)+ ggtitle("module 7")
+
+
+```
+
+DA subtype markers  doi: https://doi.org/10.1101/334417 referred to as known markers
+
+```{r}
+
+sn <- c("ALDH1A7", "SOX6", "CBLN1","VAV3","ATP2A3")
+vta <- c("CALB1","OTX2","CRYM","CADM1","MARCKS")
+
+
+ft <- c(sn,vta)
+DotPlot(seu.da, features = ft)+ RotatedAxis()+ ggtitle("Estabilished human SN vs VTA")
+DoHeatmap(seu.da, features = ft)+ ggtitle("Estabilished human SN vs VTA")
+
+```
+Aguila new stable DGE distinguishing human VTA vs SN
+
+```{r}
+sn <- c("SEZ6", "APT2A3","CBLN1","RGS16")
+vta <- c("CADM1","LY6H","KCNIP4","EN2","MMP17", "PCSK2","FXYD6","PEG3")
+
+ft <- c(sn,vta)
+DotPlot(seu.da, features = ft)+ RotatedAxis() + ggtitle("stable human SN vs VTA")
+DoHeatmap(seu.da, features = ft)+ ggtitle("stable human SN vs VTA")
+
+# genes stable to resolve SN vs VTA
+cross.species <- c("ZCCHC12","CDH13","SERPINE2") # all VTA
+human <- c("GSG1L","ATP2A3","LY6H","FXYD6")
+# FXYD6 =vta, gsg1L = SN, LY6H = VTA, ATP2A3 = SN
+
+ft <- c(human, cross.species)
+DotPlot(seu.da, features = ft)+ RotatedAxis()+ ggtitle("resolving markers SN vs VTA")
+DoHeatmap(seu.da, features = ft)+ ggtitle("resolving markers SN vs VTA")
+
+h.sn <- c("GSG1L","ATP2A3","VAT1","RGS16","ZFHX2","CBLN1","SLIT1")
+h.vta <- c("CADM1","FXYD6","PEG3","CACNA2D3","PTCHD1","GNG4","ZCCHC12",
+           "SERPINE2","KCNIP4","PCSK2","ARHGAP26","TIMP2","LY6H",
+           "CRYM","CDH13","EN2","OSBPL3","NECAB1","STC1","PEG10")
+
+ft <- c(h.sn,h.vta)
+DotPlot(seu.da, features = ft)+ RotatedAxis()+ ggtitle("stable human SN vs VTA")
+DoHeatmap(seu.da, features = ft)+ ggtitle("stable human SN vs VTA")
+
+
+
+
+```
+
+
+
+
