@@ -4,13 +4,28 @@ An R library with functions for a work flow to use flow cytometry to quantify ce
 
 R library "CelltypeR"
 
-Workbook for analysis steps and usage of CelltypeR functions.
-Workbooks for creation of figures organized by figure.
-Data folder with raw flow cytometry data (sample.fsc), reference matrix for correlation predicitons,
+Workbooks:
+- analysis steps and usage of CelltypeR functions.
+- Figures organized by figure.
+
+Data folder:
+- raw flow cytometry data (sample.fsc)
+- reference matrix for correlation predicitons
+- trained random forest classifier for predictions
 
 
 
 # To install the CelltypeR library
+
+Install devtools package
+
+```
+install.packages("devtools")
+# load the library
+library(devtools)
+```
+
+Install CelltypeR library using devtools
 
 ```
 devtools::install_github("RhalenaThomas/CelltypeR/CelltypeR")
