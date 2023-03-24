@@ -7,3 +7,7 @@ R library "CelltypeR"
 Workbooks for analysis steps.
 Workbooks for creation of figures.
 
+
+To install the CelltypeR library
+
+devtools::install_github("RhalenaThomas/CelltypeR")
