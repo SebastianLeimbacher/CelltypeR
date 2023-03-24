@@ -20,3 +20,4 @@ Imports:
         igraph(>= 1.3.5),
         flexclust(>= 1.4.1),
         kit(>= 0.0.12)
+

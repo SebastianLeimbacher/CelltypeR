@@ -618,7 +618,7 @@ louvain <- function(input, #seu object
 
 #' @export
 #' @importFrom Seurat FindNeighbors FindClusters RunUMAP
-#' @import flexclust randIndex
+#' @importFrom flexclust randIndex
 
 clust_stability <- function(input,
                             resolutions,
