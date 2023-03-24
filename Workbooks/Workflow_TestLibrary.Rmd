@@ -368,8 +368,8 @@ reference_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/Data/ReferenceMatrix9ce
 
 reference_data <- read.csv(reference_path)
 
-cor <- find_correlation(df.input, 
-                             reference_data, 
+cor <- find_correlation(test = df.input, 
+                             reference = reference_data, 
                              min_corr = 0.45, 
                              min_diff = 0.05)
 
