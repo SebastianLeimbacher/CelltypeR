@@ -1020,7 +1020,7 @@ plot_corr <- function(df) {
 
 #' @export
 #' @import data.table randomForest caret
-#' @importFrom randomForest randomForest predict
+#' @importFrom randomForest randomForest
 #' @importFrom caret trainControl train
 
 RFM_train <- function(seurate_object,
@@ -1187,9 +1187,7 @@ RFM_train <- function(seurate_object,
 #'added as the metadata slot 'rfm.labels'.
 
 #' @export
-#' @import randomForest
-#' @importFrom randomForest predict
-#' @importFrom Seurat AddMetaData
+#' @importFrom stats predict
 RFM_predict <- function(seu, rf){
   # prepare a data object to be test data
   df <- transpose(as.data.frame(GetAssayData(seu,slot = 'scale.data')))
