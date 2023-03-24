@@ -1196,7 +1196,6 @@ RFM_predict <- function(seu, rf){
   colnames(df) <- AB
   # run the predictions
   rfm.pred <- as.data.frame(predict(rf,df))
-  seu <- AddMetaData(object=seu, metadata=rfm.pred$`predict(rf, df)`, col.name = 'rfm.labels')
 }
 
 
