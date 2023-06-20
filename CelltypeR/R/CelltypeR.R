@@ -263,6 +263,7 @@ explore_param <- function(input, #for phenograph and louvain only
                           flow_k = NULL, #k for flowsom
                           pheno_lou_kn = NULL, #kn for phenograph or louvain
                           lou_resolution = NULL, #resolution for louvain
+                          pcdim = 1:10,
                           run.plot = TRUE, #print if run
                           run.stats = TRUE, #print and return if run
                           save_to = NULL) { #need it if save plots or stats
@@ -274,6 +275,7 @@ explore_param <- function(input, #for phenograph and louvain only
                   df_input = df_input,
                   pheno_lou_kn = pheno_lou_kn,
                   resolutions = lou_resolution,
+                  ldim = pcdim,
                   run.plot = run.plot,
                   run.stats = run.stats,
                   save_to = save_to)
@@ -282,6 +284,7 @@ explore_param <- function(input, #for phenograph and louvain only
     cl <- phenograph(input = input,
                      df_input = df_input,
                      pheno_lou_kn = pheno_lou_kn,
+                     pdim = pcdim,
                      run.stats = run.stats,
                      run.plot = run.plot,
                      save_to = save_to)
@@ -290,6 +293,7 @@ explore_param <- function(input, #for phenograph and louvain only
     cl <- flowsom(input = input,
                   df_input = df_input,
                   flow_k = flow_k,
+                  fdim = pcdim,
                   run.stats = run.stats,
                   run.plot = run.plot,
                   save_to = save_to)
@@ -304,6 +308,7 @@ explore_param <- function(input, #for phenograph and louvain only
 flowsom <- function(input, #seurat
                     df_input, #the processed df2 file before being converted to seurat
                     flow_k,
+                    fdim = pcdim,
                     run.stats = TRUE,
                     run.plot = TRUE,
                     save_to = NULL) {
@@ -328,8 +333,8 @@ flowsom <- function(input, #seurat
   stats_ls <- vector() #create a list to store all stats
 
   # kn = round(sqrt(dim(df2)[1]))
-  #input <- FindNeighbors(input, dims = 1:12)
-  input <- RunUMAP(input, dims = 1:12)
+  #input <- FindNeighbors(input, dims = dim)
+  input <- RunUMAP(input, dims = fdim)
 
   for (i in flow_k){
     flowSOMcluster <- metaClustering_consensus(fs$map$codes, k = i, seed=42)
@@ -417,6 +422,7 @@ flowsom <- function(input, #seurat
 phenograph <- function(input,
                        df_input,
                        pheno_lou_kn,
+                       pdim = pcdim,
                        run.stats = TRUE,
                        run.plot = TRUE,
                        save_to = NULL) {
@@ -436,8 +442,8 @@ phenograph <- function(input,
   # here is the clustering
 
   for (i in pheno_lou_kn){
-    #input <- FindNeighbors(input, dims = 1:12, k.param = i)
-    input <- RunUMAP(input, dims = 1:12, n.neighbors = i)
+    input <- FindNeighbors(input, dims = pdim, k.param = i, reduction = "pca")
+    input <- RunUMAP(input, dims = pdim, n.neighbors = i)
 
     ### run phenograph clustering
     Rphenograph_out_flow <- Rphenograph(m, k = i)
@@ -508,6 +514,7 @@ louvain <- function(input, #seu object
                     df_input,
                     pheno_lou_kn,
                     resolutions,
+                    ldim = pcdim,
                     run.plot = TRUE, #option to save the graphs
                     run.stats = TRUE, #option to save stats list
                     save_to = NULL #only required when save is TRUE
@@ -520,14 +527,14 @@ louvain <- function(input, #seu object
     dis <- daisy(m[row_n, ])  #dissimilarities distance
     statsl <- vector() #stats list returned
   }
-
   # In the loop
   # save a data object for each kn - will only keep temporarily
   # the clusters will write over with each new kn
   for (i in pheno_lou_kn){
+
+    input <- FindNeighbors(input, dims = ldim, k.param = i, reduction = "pca")
+    input <- RunUMAP(input, dims = ldim, n.neighbors = i, reduction = "pca")
     print(paste("finding neighbours for kn ",i,sep=""))
-    input <- FindNeighbors(input, dims = 1:12, k.param = i, reduction = "pca")
-    input <- RunUMAP(input, dims = 1:12, n.neighbors = i)
     for (j in resolutions) {
       DefaultAssay(input) <- "RNA"
       input <- FindClusters(input, resolution = j, reduction = "pca")
@@ -623,6 +630,7 @@ louvain <- function(input, #seu object
 clust_stability <- function(input,
                             resolutions,
                             kn,
+                            pcdim = 1:10,
                             n = 100, #number of iterations
                             save_to = NULL  #if null, will not save seul, ril, ncl, rdf
 ) {
@@ -653,9 +661,8 @@ clust_stability <- function(input,
 
   #main loops:
   for(i in kn) {
-    #shuming note: why dims=12 here?
-    input <- FindNeighbors(input, dims = 1:12, k.param = i)
-    input <- RunUMAP(input, dims = 1:12, n.neighbors = i)
+    input <- FindNeighbors(input, dims = pcdim, k.param = i)
+    input <- RunUMAP(input, dims = pcdim, n.neighbors = i)
 
     for (j in resolutions) {
       seul <- sapply(1:n, hp1) #list of n repeats of clustering (Ident(seu) object)
@@ -740,10 +747,11 @@ get_clusters <- function(seu, method = "louvain",
                          df_input = NULL, #needed  if input "flowsom"
                          k = 60, #k for flowsom or kn for Phenograph and Seurat Louvain
                          resolution = 0.8,
+                         pcdim = 1:10,
                          plots = TRUE,
                          save_plots = FALSE) {
   if(method == "louvain"){
-    seu <- FindNeighbors(seu, dims = 1:12, k.param = k, reduction = "pca")
+    seu <- FindNeighbors(seu, dims = pcdim, k.param = k, reduction = "pca")
     # must take one less than the number of antibodies
     seu <- FindClusters(seu, resolution = resolution)
     group_name <- "seurat_clusters"
@@ -779,7 +787,7 @@ get_clusters <- function(seu, method = "louvain",
     print("select a valid clustering method: 'louvain','phenograph','flowsom' ")
   }
   # make the UMAP for all object
-  seu <- RunUMAP(seu, dims = 1:12, n.neighbors = k, min.dist = 0.4,
+  seu <- RunUMAP(seu, dims = pcdim, n.neighbors = k, min.dist = 0.4,
                  spread = 1.5)
   if(plots){
 
@@ -954,12 +962,10 @@ plot_corr <- function(df) {
     scale_fill_manual(values = c("#4E84C4", "#52854C")) +
     ylab("correlation coefficient") + xlab("Cell type")
   # the second best correlation is so low it was removed from STEM with axis limit -0.1 and even -1
-
-  # print(plot4)
-
   # down sample
   set.seed(64)
-  df.downsample <- sample_n(df, 1000)
+  n_samples <- min(1000, nrow(df))
+  df.downsample <- sample_n(df, n_samples)
   df.melt.down <- melt(df.downsample)
 
   # # reformat the table to work with the before after plot
@@ -1033,12 +1039,14 @@ RFM_train <- function(seurate_object,
                       trees = c(250, 500, 1000,2000),
                       start_node = 12){
   # set up the data
+  nodes <- maxnodes # for renaming later
   seu <- seurate_object
   AB <- AB_list
+  all_features <- seu@assays[["RNA"]]@counts@Dimnames[[1]]
   df <- transpose(as.data.frame(GetAssayData(seu,slot = 'scale.data')))
-  nodes <- maxnodes # for renaming later
   # add antibody/marker names
-  colnames(df) <- AB
+  colnames(df) <- all_features
+  df <- df[, AB_list]
   # add the annotations
   ann <- annotations
   df.l <- cbind(df, lables = ann)
@@ -1053,8 +1061,8 @@ RFM_train <- function(seurate_object,
   set.seed(seed)
   ind <- sample(2, nrow(df1), replace = TRUE, prob = split) # prop is the proportions
   # split the data into train and test
-  train <- df1[ind==1,]
-  test <- df1[ind==2,]
+  train <- na.omit(df1[ind==1,])
+  test <- na.omit(df1[ind==2,])
   # need to start with a basic model to optimize
   trControl <- trainControl(method = "cv", number = 10, search ="grid")
 
@@ -1384,6 +1392,7 @@ cluster_annotate <- function(seu, ann.list,
   df3$Cluster <- as.integer(as.character(df3$Cluster))
   dfsort <- df3  %>% arrange(Cluster)
   # get a vector
+  print(dfsort)
   dfcon <- dfsort %>% dplyr::select("Cluster","consensus")
   print(dfcon)
 

@@ -88,7 +88,7 @@ Load libraries for data wrangling and plotting
 library(tidyverse)
 library(ggplot2)
 library(Seurat)
-library(pryr) # for memory check
+#library(pryr) # for memory check
 
 ```
 
@@ -360,6 +360,8 @@ All data sets were processed into Seurat objects.
 
 1. Adult midbrain: https://doi.org/10.1038/s41593-022-01061-1.  (Kamath/Macosko) 
 2. Developing brain: https://cells.ucsc.edu/?ds=cortex-dev DOI: 10.1126/science.aap8809 (Nowakowski/Kriegstein)
+3. Developing forebrain
+4. Fetal Midbrain La Manno
 
 
 ```{r}
@@ -691,18 +693,6 @@ unique(seu$cell_type1)
 unique(seu$Source)
 Idents(seu) <- "cell_type1"
 levels(seu)
-# there too many cell types these need to be grouped at a higher resolution
-# [1] "eNb1"     "eNb2"     "eNb3"     "eNb4"     "eProg1a"  "eProg1b" 
-# [7] "eProg2a"  "eProg2b"  "eRgla"    "eRglb"    "eRglc"    "eRgld"   
-#[13] "eRgle"    "eRglf"    "eSCa"     "eSCb"     "eSCc"     "hDA0"    
-#[19] "hDA1"     "hDA2"     "hEndo"    "hGaba"    "hMgl"     "hNbGaba" 
-#[25] "hNbM"     "hNbML1"   "hNbML5"   "hNProg"   "hOMTN"    "hOPC"    
-#31] "hPeric"   "hProgBP"  "hProgFPL" "hProgFPM" "hProgM"   "hRgl1"   
-#[37] "hRgl2a"   "hRgl2b"   "hRgl2c"   "hRgl3"    "hRN"      "hSert"   
-#[43] "iDAa"     "iDAb"     "iDAc"     "iMN1"     "iMN2"     "iNb1"    
-#[49] "iNb2"     "iProg1"   "iProg2"   "iProg3"   "iRgl1"    "iRgl2"   
-#[55] "iRN"      "Unk"    
-
 # cell type main groups
 celltypes <- c("NB","NB","NB","NB","Prog","Prog",
                "Prog","Prog","RG","RG","RG","RG",
@@ -718,6 +708,8 @@ celltypes <- c("NB","NB","NB","NB","Prog","Prog",
 names(celltypes) <- levels(seu)
 seu <- RenameIdents(seu, celltypes)
 seu <- AddMetaData(seu, metadata = Idents(seu), col.name = "Celltypes")
+# save the Main cell types for later
+saveRDS(seu,"/Users/rhalenathomas/Documents/Data/scRNAseq/PublicData/manno_human.rds" )
 
 table(seu$Celltypes,seu$cell_type1)
 unique(seu$Celltypes)
@@ -884,7 +876,7 @@ heatmap(RNAbrain,
         col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
         main = "Heatmap of Normalized Matrix")
 
-# save the average RNA brain experession matrix
+# save the average RNA brain expression matrix
 output_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/"
 write.csv(RNAbrain, paste(output_path,"BrainRNAReferenceMatrix.csv",sep = ""))
 
@@ -1078,7 +1070,6 @@ heatmap(scCO,
 
 ```
 
-
 Take the mean of the two organoid datasets
 
 ```{r}
@@ -1189,7 +1180,6 @@ heatmap(trans_df,
 
 ```
 
-
 Now take the mean of the transcription and the FC protein levels
 
 ```{r}
@@ -1252,7 +1242,823 @@ heatmap(ref_mat,
 
 
 
+```
+
+Save the reference matrix to be used in the correlation function
+
+```{r}
+
+write.csv(ref_mat,"/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/FinalReferenceMatrix.csv" )
+
+```
+
+
+Make a second reference matrix for the adjusted time course panel
+1. FC data for overlapping proteins
+2. Brain transcriptomics
+3. organoid transcriptomics
+
+New Panel:
+TH,CD24,CD56,CD29,CD15,CD184,CD133,SSEA4,CD44,CD49f,CD140a
+
+Antibodies overlapping with the original panel
+CD133,CD140a,CD15,CD184,CD24,CD29,CD44,CD56
+
+New additions
+SSEA4,TH,CD49f
+
+Flow cytometry data
+
+```{r}
+
+# read in the flow cytometry data 
+# this is the same flow data as before an will only contain the overlapping antibodies
+
+input_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/2Dcells_surface/preprocessing/Allsamples/"
+
+# this is the complete data
+fc <- read.csv(paste(input_path,"2Dcells_surfacealigned_transformed_flowset.csv", sep = ""))
+
+# we now want to get the mean expression values for each antibody in each cell type
+# check what columns we have
+colnames(fc)
+
+
+# here "batch" is the cell type
+# we will select just the antibodies in our new panel
+fcf <- fc %>% select(c("CD133","CD140a","CD15","CD184","CD24",
+                       "CD29","CD44","CD56","Batch"))
+head(fcf)
+
+colnames(fcf)
+dim(fcf)
+unique(fcf$Batch)
+
+# now we want to make a new dataframe with mean expression values
+# Calculate the mean value per column and per cell type
+meanfc <- aggregate(. ~ fcf$Batch, data = fcf[, -9], FUN = mean)
+
+# our table is transposed, we need to switch it
+
+# set the Batch values (cell types) as rownames
+rownames(meanfc) <- meanfc$`fcf$Batch`
+fcmeans <- data.frame(t(meanfc[, -1]), stringsAsFactors = FALSE)
+head(fcmeans)
+
+# Take the mean of the repeat samples
+df_flow <- fcmeans
+
+# Calculate the average for NPCs and create the new column
+df_flow$NPCs <- rowMeans(df_flow[, c("NPC1", "NPC2")])
+
+# Remove the individual NPC columns
+df_flow <- df_flow %>% select(-c("NPC1", "NPC2"))
+
+df_flow$Astrocytes <- rowMeans(df_flow[, c("Astrocytes2", "Astrocyes1")])
+df_flow <- df_flow %>% select(-c("Astrocytes2", "Astrocyes1"))
+
+#rename columns
+colnames(df_flow) <- c("IPSC","Neuron","OPC","Oligo","NPC","Astrocyte")
+# make a DAneurons cell type
+df_flow$DANeuron <- df_flow$Neuron
+# make an NPC cell type 
+df_flow$DANPC <- df_flow$NPC
+
+head(df_flow)
+#I'm going to make expression predictions from the literature for each cell type for the 3 new antibodies
+# must be in the cell type order
+TH <- c(-2,-2,-1,-2,2,0,10,10)
+SSEA4 <- c(10,-5,3,-5,3,0,-3,0)
+CD49f <- c(-3,-5,2,0,2,10,-5,2)
+# add  rows for the missing antibodies
+
+df_temp <- t(data.frame(TH,SSEA4,CD49f))
+# add column names
+colnames(df_temp) <- colnames(df_flow)
+combined_df <- rbind(df_flow,df_temp)
+
+# now z score the each antibody
+
+zero.one <- t(apply(combined_df, MARGIN = 1, FUN = function(X) (X - min(X, na.rm = TRUE))/diff(range(X, na.rm = TRUE))))
+
+# Assign the column names from the reference data frame to the normalized matrix
+fcz <- zero.one
+
+heatmap(fcz, 
+        Rowv = NA,  # Don't cluster rows
+        Colv = NA,  # Don't cluster columns
+        col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
+        main = "FC Refernce Matrix")
+
+
+# save the flow cytometery in 2D cells normalized matrix
+output_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/"
+write.csv(fcz, paste(output_path,"FC_ReferenceMatrix_panel2.csv",sep = ""))
+
+```
+
+Expression from Total RNAseq and Brain RNAseq then combine
+```{r}
+# Total Brain seq
+input_path <- "/Users/rhalenathomas/Documents/Data/RNA/BenBarres/"
+RNA_adult_brain <- read.csv(paste(input_path,"HumanBrainRNASortedCells.csv",sep = ""))
+# new panel
+# Protein names:"CD133" = PROM1, "CD140a" = PDGFRA, "CD15" = FUT4,   "CD184" = CXCR4,"CD24" = CD24,"CD29" = ITGB1,"CD44" = CD44, "CD56"=NCAM1,"TH"= TH, "SSEA4" = ST3GAL2,  "CD49f"=ITGA6  
+marker_genes = c("CD24","NCAM1","ITGB1","FUT4","CXCR4",
+                 "PROM1","CD44","PDGFRA","TH","ST3GAL2","ITGA6")
+# get the expression for the genes of interest
+df <- subset(RNA_adult_brain, X %in% marker_genes)
+# now we want to add the gene names as the row names
+rownames(df) <- df$X
+colnames(df)
+# remove the X column of gene names, the Tumor cells and the Whole cortex
+df <- df[,6:38]
+colnames(df)
+
+# now take the average of the different cell types
+df$Astrocytes.Fetal <- rowMeans(df[, c("AstrocytesFetal","AstrocytesFetal.1",
+                                       "AstrocytesFetal.2","AstrocytesFetal.3",
+                                       "AstrocytesFetal.4",
+                                           "AstrocytesFetal.5","AstrocytesFetal.6",
+                                           "AstrocytesFetal.7","AstrocytesFetal.8",
+                                           "AstrocytesFetal.9")])
+df$Astrocytes.Mature <- rowMeans(df[, c("AstrocytesMature","AstrocytesMature.1",
+                                        "AstrocytesMature.2","AstrocytesMature.3",
+                                        "AstrocytesMature.4","AstrocytesMature.5",
+                                        "AstrocytesMature.6","AstrocytesMature.7",
+                                        "AstrocytesMature.8","AstrocytesMature.9",
+                                        "AstrocytesMature.10",
+                                        "AstrocytesMature.11")])
+#means of oligo
+df$Oligodendrocyte <- rowMeans(df[, c("Oligo","Oligo.1","Oligo.2",
+                                      "Oligo.3","Oligo.4")])
+# mean from endothelial cells
+df$Endothelials <- rowMeans(df[, c("Endothelial","Endothelial.1")])
+# select mean cell types and all desired cell types
+dfRNA <- df %>% select(c("Astrocytes.Fetal","Astrocytes.Mature","Endothelials",
+                       "Oligodendrocyte","Neurons"))
+# z-score
+zero.one <- t(apply(dfRNA, MARGIN = 1, FUN = function(X) (X - min(X, na.rm = TRUE))/diff(range(X, na.rm = TRUE))))
+
+# Assign the column names from the reference data frame to the normalized matrix
+fc_rnaseq <- zero.one
+
+# quick visualization
+heatmap(fc_rnaseq, 
+        Rowv = NA,  # Don't cluster rows
+        Colv = NA,  # Don't cluster columns
+        col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
+        main = "Total RNA Brain")
+
+output_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/"
+write.csv(fc_rnaseq, paste(output_path,"BrainRNABBPanel2.csv",sep = ""))
+
+fc_rnaseq <- read.csv("/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/BrainRNABBPanel2.csv")
+rownames(fc_rnaseq) <- fc_rnaseq$X
+fc_rnaseq <- fc_rnaseq %>% select(-"X")
+
+```
+scRNAseq brain
+
+```{r}
+# Adult midbrain
+input_path <- "/Users/rhalenathomas/Documents/Data/scRNAseq/PublicData/"
+adult_midbrain <- readRDS(paste(input_path,"KamathTotal_downsample.RDS",sep = ""))
+unique(adult_midbrain$Cell_Type)
+# we will use the cell type (main cell types)
+# get expression for each cell type
+Idents(adult_midbrain) <- "Cell_Type"
+# we need to remove the NaN cells
+seu <- subset(adult_midbrain, idents = c("astro", "endo","olig", "nonda", "da", "opc"))
+unique(seu$Cell_Type)
+# scale the data
+seu <- NormalizeData(seu, features = rownames(seu))
+seu <- ScaleData(seu, features = rownames(seu))
+expression <- FetchData(seu, vars = c("ident",marker_genes))
+# get means for each cell type
+ex <- as.tbl(expression)
+meanEx <- ex %>% group_by(ident) %>% summarise_all(.funs = c(mean="mean"))
+head(meanEx)
+# remove the gene name column and add these as row names
+df <- as.data.frame(meanEx)
+rownames(df) <- df$ident
+df <- df[,2:12]
+df <- as.data.frame(t(df))
+rownames(df) <-  c("CD24","NCAM1","ITGB1","FUT4",  
+                   "CXCR4","PROM1","CD44","PDGFRA","TH",
+                   "ST3GAL2","ITGA6")
+
+# now we will normalize the data z-score the same as the other data
+# z-score
+zero.one <- t(apply(df, MARGIN = 1, FUN = function(X) (X - min(X, na.rm = TRUE))/diff(range(X, na.rm = TRUE))))
+
+# Assign the column names from the reference data frame to the normalized matrix
+midbrain <- zero.one
+
+# quick visualization
+heatmap(midbrain, 
+        Rowv = NA,  # Don't cluster rows
+        Colv = NA,  # Don't cluster columns
+        col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
+        main = "Adult Midbrain")
+
+output_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/"
+write.csv(midbrain, paste(output_path,"AdultMidbrainPanel2.csv",sep = ""))
+midbrain <- read.csv("/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/AdultMidbrainPanel2.csv")
+rownames(midbrain) <- midbrain$X
+midbrain <- midbrain %>% select(-"X")
+
+```
+
+Human Fetal midbrain
+```{r}
+input_path <- "/Users/rhalenathomas/Documents/Data/scRNAseq/PublicData/"
+# this is a singlecellexperiment object
+fetalmid <- readRDS(paste(input_path,"manno_human.rds",sep = ""))
+Idents(fetalmid) <- "Celltypes"
+seu <- subset(fetalmid, idents = c("RG","Prog","DAN","Endothelial","Neurons","OPC","IN"))
+seu <- NormalizeData(seu, features = rownames(seu))
+seu <- ScaleData(seu, features = rownames(seu))
+# get the expression data
+expression <- FetchData(seu, vars = c("ident",marker_genes))
+# get means for each cell type
+ex <- as.data.frame(expression)
+meanEx <- as.data.frame(ex %>% group_by(ident) %>% summarise_all(.funs = c(mean="mean")))
+head(meanEx)
+# remove the gene name column and add these as row names
+rownames(meanEx) <- meanEx$ident
+head(meanEx)
+df <- as.data.frame(meanEx)
+rownames(df) <- df$ident
+df <- df[,2:12]
+df <- as.data.frame(t(df))
+rownames(df) <-  c("CD24","NCAM1","ITGB1","FUT4",  
+                   "CXCR4","PROM1","CD44","PDGFRA","TH",
+                   "ST3GAL2","ITGA6")
+# some cell types still need to be combined
+colnames(df)
+# just the Neurons and IN (interneurons)
+df$Neuron <- rowMeans(df[, c("Neurons","IN")])
+df <- df %>% select(-c("Neurons","IN"))
+
+# now we will normalize the data z-score the same as the other data
+# z-score
+zero.one <- t(apply(df, MARGIN = 1, FUN = function(X) (X - min(X, na.rm = TRUE))/diff(range(X, na.rm = TRUE))))
+
+# Assign the column names from the reference data frame to the normalized matrix
+fetalmidbrain <- zero.one
+
+# quick visualization
+heatmap(fetalmidbrain , 
+        Rowv = NA,  # Don't cluster rows
+        Colv = NA,  # Don't cluster columns
+        col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
+        main = "Fetal Midbrain")
+output_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/"
+write.csv(fetalmidbrain, paste(output_path,"FeatalMidbrainPanel2.csv",sep = ""))
+
+fetalmidbrain <- read.csv("/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/FeatalMidbrainPanel2.csv")
+rownames(fetalmidbrain) <- fetalmidbrain$X
+fetalmidbrain <- fetalmidbrain %>% select(-"X")
 
 
 ```
+
+Developing forebrain
+```{r}
+input_path <- "/Users/rhalenathomas/Documents/Data/scRNAseq/PublicData/"
+forebrain <- readRDS(paste(input_path,"Karolinski_DevForebrain_downsample_Level1.RDS",sep = ""))
+# again there is TH in the total neurons I will see if I can find the subgroup
+colnames(forebrain@meta.data)
+unique(forebrain$Clusters)
+DotPlot(forebrain, features = "TH", group.by = "Clusters")
+# TH is expressed in: 
+#Foerbrain inhibitory neuroblast, 
+#Excitatory neurons possibly midbrain,
+#mid/hindbrain neuroblast, 
+#inhibtor neurons midbrain, possibly GABAergic
+
+# I'll take only the cell types of interest
+# IPC = intermediate progenitors
+
+# will need to rename to capture DA neurons
+Idents(forebrain) <- "Clusters"
+
+neworder <- c("OPCs","Microglia","NPC","RG-div","Glioblast","IN","Excitatory neurons midbrain","Excitatory neurons possibly midbrain","Excitatory neurons cortex","Forebrain early neuroblast possibly GABAergic","GABAergic forebrain","Cortical Pyramidal","Radial Glia","Radial Glia potential glioblast","Radial Glia VLMC primed?","Glioblast/Pre-OPC","Forebrain neural progenitor EMX1","Endothelial","Striatum/Cortical neurons","Radial glia/Glioblast/Forebrain progenitor EMX1","Forebrain inhibitory neuroblast","VLMCs","Inhibitory neurons Midbrain, possibly GABAergic","Hindbrain neuroblast","Radial Glia/Glioblast","GABAergic or interneuron neuroblast probably midbrain","Midbrain inhibitory neuroblast","U","Mid/Hindbrain neuroblast","Midbrain/Hindbrain inhibitory neuroblast" )
+
+Idents(forebrain) <- "Clusters"
+levels(forebrain)
+Idents(forebrain) <- factor(Idents(forebrain), levels = neworder)
+levels(forebrain)
+newcells <- c("OPCs","Microglia","NPC","RG-div","Glioblast","Cortical Interneurons","EN","DAneurons","EN","NPC","IN","EN","RG","RG","RG","Pre-OPC","NPC","Endothelial","Neurons","Glioblast","NPC","VLMCs","DAneurons","NPC","RG","IN","NPC","U","NPC-DA","NPC")
+
+# add to seurat object
+names(newcells) <- levels(forebrain)
+forebrain <- RenameIdents(forebrain, newcells)
+forebrain <- AddMetaData(forebrain, metadata = Idents(forebrain), col.name = "Celltypes2")
+# check
+table(forebrain$Celltypes2,forebrain$Clusters) # not the order is wrong
+table(forebrain$Celltypes2)
+unique(forebrain$Celltypes2)
+# save new labels
+saveRDS(forebrain, "/Users/rhalenathomas/Documents/Data/scRNAseq/PublicData/DevForbrain.RDS")
+
+# select the desired cell types
+seu <- subset(forebrain, idents = c("RG","RG-div","IN","EN","DAneurons",
+                                     "Endothelial","NPC","NPC-DA","Neurons","OPCs"))
+
+seu <- NormalizeData(seu, features = rownames(seu))
+seu <- ScaleData(seu, features = rownames(seu))
+# get the expression data
+expression <- FetchData(seu, vars = c("ident",marker_genes))
+# get means for each cell type
+ex <- as.data.frame(expression)
+meanEx <- as.data.frame(ex %>% group_by(ident) %>% summarise_all(.funs = c(mean="mean")))
+head(meanEx)
+# remove the gene name column and add these as row names
+rownames(meanEx) <- meanEx$ident
+head(meanEx)
+df <- as.data.frame(meanEx)
+rownames(df) <- df$ident
+df <- df[,2:12]
+df <- as.data.frame(t(df))
+rownames(df) <-  c("CD24","NCAM1","ITGB1","FUT4",  
+                   "CXCR4","PROM1","CD44","PDGFRA","TH",
+                   "ST3GAL2","ITGA6")
+# Check if some cell types still need to be combined
+colnames(df)
+# merge EN and IN (excitatory and inhibitor neurons)
+df$Neuron <- rowMeans(df[, c("EN","IN","Neurons")])
+df <- df %>% select(-c("EN","IN","Neurons"))
+
+# now we will normalize the data z-score the same as the other data
+# z-score
+zero.one <- t(apply(df, MARGIN = 1, FUN = function(X) (X - min(X, na.rm = TRUE))/diff(range(X, na.rm = TRUE))))
+
+# Assign the column names from the reference data frame to the normalized matrix
+devforebrain <- zero.one
+
+# quick visualization
+heatmap(devforebrain, 
+        Rowv = NA,  # Don't cluster rows
+        Colv = NA,  # Don't cluster columns
+        col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
+        main = "Developing Forebrain")
+      
+output_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/"
+write.csv(devforebrain, paste(output_path,"DevForebrainPanel2.csv",sep = ""))
+
+```
+
+Developing cortex
+```{r}
+input_path <- "/Users/rhalenathomas/Documents/Data/scRNAseq/PublicData/"
+dev_cortex <- readRDS(paste(input_path,"Nowakowski_dev_cortext.RDS",sep = ""))
+# I see there is TH expression in the "neurons" I might need to see the subtypes 
+unique(dev_cortex$WGCNAcluster)
+unique(dev_cortex$Celltypes)
+# see which cell types when into each main group
+table(dev_cortex$Celltypes,dev_cortex$WGCNAcluster)
+# there are not subtypes but ages of neurons 
+
+
+Idents(dev_cortex) <- "Celltypes"
+seu_neurons <- subset(seu, idents = c("EN","IN"))
+# nEN-early1 has all the TH expression and non  of the others do
+# I need to make a new cell type meta data
+DotPlot(seu_neurons, features = "TH", group.by = "WGCNAcluster")
+
+Idents(dev_cortex) <- "WGCNAcluster"
+levels(dev_cortex)
+newcells <- c( "RG","RG-div","EN","EN","EN",
+               "RG","RG-div","IN","IN",
+               "IPC","RG" ,"IPC","IPC","OPC",
+               "IN","IPC","IN","IPC",
+               "EN","IN","EN","IN","IN","IN",
+               "Astrocyte","IN","EN","IN","EN",
+               "NeuronsDA","EN","RG","Endothelial")
+# add to seurat object
+names(newcells) <- levels(dev_cortex)
+dev_cortex <- RenameIdents(dev_cortex, newcells)
+dev_cortex <- AddMetaData(dev_cortex, metadata = Idents(dev_cortex), col.name = "Celltypes2")
+# check it is correct
+table(dev_cortex$Celltypes2,dev_cortex$WGCNAcluster)
+# check that the correct Neurons are set as DA
+DotPlot(dev_cortex, features = c("TH"), group.by = "Celltypes2")
+# yes it is correct
+# save the new cell types for later
+saveRDS(dev_cortex,"/Users/rhalenathomas/Documents/Data/scRNAseq/PublicData/Nowakowski_dev_cortext.RDS")
+
+# now I'll take the cell types of interest
+Idents(dev_cortex) <- "Celltypes2"
+seu <- subset(dev_cortex, idents = c("RG","RG-div","EN","IN","NeuronsDA","IPC","OPC",
+                                        "Astrocyte","Endothelial"))
+# normalize and scale
+seu <- NormalizeData(seu, features = rownames(seu))
+seu <- ScaleData(seu, features = rownames(seu))
+# get the expression data
+expression <- FetchData(seu, vars = c("ident",marker_genes))
+# get means for each cell type
+ex <- as.data.frame(expression)
+meanEx <- as.data.frame(ex %>% group_by(ident) %>% summarise_all(.funs = c(mean="mean")))
+head(meanEx)
+# remove the gene name column and add these as row names
+rownames(meanEx) <- meanEx$ident
+head(meanEx)
+df <- as.data.frame(meanEx)
+rownames(df) <- df$ident
+df <- df[,2:12]
+df <- as.data.frame(t(df))
+rownames(df) <-  c("CD24","NCAM1","ITGB1","FUT4",  
+                   "CXCR4","PROM1","CD44","PDGFRA","TH",
+                   "ST3GAL2","ITGA6")
+# Check if some cell types still need to be combined
+colnames(df)
+# merge EN and IN (excitatory and inhibitor neurons)
+df$Neuron <- rowMeans(df[, c("EN","IN")])
+df <- df %>% select(-c("EN","IN"))
+# now we will normalize the data z-score the same as the other data
+# z-score
+zero.one <- t(apply(df, MARGIN = 1, FUN = function(X) (X - min(X, na.rm = TRUE))/diff(range(X, na.rm = TRUE))))
+# Assign the column names from the reference data frame to the normalized matrix
+devcortex <- zero.one
+# quick visualization
+heatmap(devcortex, 
+        Rowv = NA,  # Don't cluster rows
+        Colv = NA,  # Don't cluster columns
+        col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
+        main = "Developing Cortex")
+
+```
+
+
+Merge transcriptomics from brain
+
+```{r}
+total <- fc_rnaseq
+sc1 <- midbrain
+sc2 <- fetalmidbrain
+sc3 <- devforebrain
+sc4 <- devcortex 
+
+# Join data frames using merge
+df_brain <- merge(sc1, sc2, by = "row.names")
+# add the row names to the merged data frame
+rownames(df_brain) <- df_brain$Row.names
+# remove the newly created Row.names column
+df_brain <- df_brain %>% select(-"Row.names")
+
+df_brain <- merge(df_brain, sc3, by = "row.names")
+rownames(df_brain) <- df_brain$Row.names
+df_brain <- df_brain %>% select(-"Row.names")
+
+df_brain <- merge(df_brain, sc4, by = "row.names")
+rownames(df_brain) <- df_brain$Row.names
+dim(df_brain)
+df_brain <- df_brain[,2:29]
+
+df_brain <- merge(df_brain, total, by = "row.names")
+rownames(df_brain) <- df_brain$Row.names
+dim(df_brain)
+df_brain <- df_brain[,2:34]
+head(df_brain)
+dim(df_brain)
+colnames(df_brain)
+# take the means
+scBrain <- df_brain
+ 
+scBrain$neuron <- rowMeans(scBrain[, c("nonda","Neuron.x",
+                                       "Neuron.y","Neuron","Neurons")],
+                           na.rm = TRUE)
+scBrain$neuronDA <- rowMeans(scBrain[, c("da","DAN","DAneurons","NeuronsDA")],
+                           na.rm = TRUE)
+scBrain$Astrocytes <- rowMeans(scBrain[, c("astro","Astrocyte",
+                                          "Astrocytes.Mature")], na.rm = TRUE)
+scBrain$OPC <- rowMeans(scBrain[, c("opc","OPC.x",
+                                    "OPC.y","OPCs")], na.rm = TRUE)
+scBrain$endothelial <- rowMeans(scBrain[, c("endo","Endothelial.x",
+                                      "Endothelial.y","Endothelial",
+                                      "Endothelials")], na.rm = TRUE)
+scBrain$Oligo <- rowMeans(scBrain[, c("olig","Oligodendrocyte")], na.rm = TRUE)
+scBrain$RadialGlia <- rowMeans(scBrain[, c("RG.x","RG.y","RG")], na.rm = TRUE)
+scBrain$RadialGliaDiv <- rowMeans(scBrain[, c("RG-div.x","RG-div.y")], na.rm = TRUE)
+scBrain$Stem <- rowMeans(scBrain[, c("IPC","Prog")], na.rm = TRUE)
+
+scBrain <- scBrain %>% select(c("Astrocytes","Endothelial",
+                                "neuron","neuronDA","NPC-DA","NPC",
+                              "OPCs","Oligo","RadialGlia",
+                              "RadialGliaDiv","Astrocytes.Fetal",
+                                "Stem"))
+head(scBrain)
+
+# z-score
+zero.one <- t(apply(scBrain, MARGIN = 1, FUN = function(X) (X - min(X, na.rm = TRUE))/diff(range(X, na.rm = TRUE))))
+
+# Assign the column names from the reference data frame to the normalized matrix
+RNAbrain <- zero.one
+
+# quick visualization
+heatmap(RNAbrain, 
+        Rowv = NA,  # Don't cluster rows
+        Colv = NA,  # Don't cluster columns
+        col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
+        main = "Reference Matrix")
+
+# save the average RNA brain expression matrix
+output_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/"
+write.csv(RNAbrain, paste(output_path,"BrainRNAReferenceMatrixPanel2.csv",sep = ""))
+
+
+```
+
+Get the organoid expression data
+
+```{r}
+# read in the data from the 165 days midbrain organoids
+input_path <- "/Users/rhalenathomas/Documents/Data/scRNAseq/AST23_BrainComm/"
+MO <- readRDS(paste(input_path,"SNCAandiso_labels140522.rds",sep = ""))
+unique(MO$celltypes)
+# I'll take only the cell types of interest
+Idents(MO) <- "celltypes"
+seu <- subset(MO, idents = c("RG" ,"Astrocytes",
+                             "Epithelial","NPC","Neurons","DA-Neurons"))
+# normalize and scale
+seu <- NormalizeData(seu, features = rownames(seu))
+seu <- ScaleData(seu, features = rownames(seu))
+
+# get the expression data
+expression <- FetchData(seu, vars = c("ident",marker_genes))
+
+# get means for each cell type
+ex <- as.data.frame(expression)
+meanEx <- as.data.frame(ex %>% group_by(ident) %>% summarise_all(.funs = c(mean="mean")))
+head(meanEx)
+# remove the gene name column and add these as row names
+
+rownames(meanEx) <- meanEx$ident
+head(meanEx)
+dim(meanEx)
+meanEx <- meanEx[,2:12]
+df <- as.data.frame(t(meanEx))
+rownames(df) <-  c("CD24","NCAM1","ITGB1","FUT4",  
+                   "CXCR4","PROM1","CD44","PDGFRA","TH",
+                   "ST3GAL2","ITGA6")
+
+head(df)
+colnames(df)
+
+# no need to merge cell types
+# z-score
+zero.one <- t(apply(df, MARGIN = 1, FUN = function(X) (X - min(X, na.rm = TRUE))/diff(range(X, na.rm = TRUE))))
+
+# Assign the column names from the reference data frame to the normalized matrix
+scMO <- zero.one
+
+colnames(scMO) <- c("Neurons", "Astrocytes","RG",
+                    "Epithelial","DA-Neurons","DA-NPC")
+# quick visualization
+heatmap(scMO, 
+        Rowv = NA,  # Don't cluster rows
+        Colv = NA,  # Don't cluster columns
+        col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
+        main = "Midbrain Organoids")
+
+output_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/"
+write.csv(scMO, paste(output_path,"scMOReferenceMatrixPanel2.csv",sep = ""))
+
+```
+
+Cerebral orgnoids
+
+```{r}
+input_path <- "/Users/rhalenathomas/Documents/Data/scRNAseq/PublicData/"
+so <- readRDS(paste(input_path,"UCSCorg30000cellsSeurat.RDS",sep = ""))
+
+colnames(so@meta.data)
+unique(so$Type)
+unique(so$Subtype)
+Idents(so) <- "Type"
+
+seu <- subset(so, idents = c("ExcitatoryNeuron","Astrocyte","RadialGlia","IPC",
+                             "InhibitoryNeuron"))
+      
+# normalize and scale
+seu <- NormalizeData(seu, features = rownames(seu))
+seu <- ScaleData(seu, features = rownames(seu))
+
+# get the expression data
+expression <- FetchData(seu, vars = c("ident",marker_genes))
+
+# get means for each cell type
+ex <- as.data.frame(expression)
+meanEx <- as.data.frame(ex %>% group_by(ident) %>% summarise_all(.funs = c(mean="mean")))
+head(meanEx)
+# remove the gene name column and add these as row names
+
+rownames(meanEx) <- meanEx$ident
+head(meanEx)
+dim(meanEx)
+meanEx <- meanEx[,2:7]
+df <- as.data.frame(t(meanEx))
+# some genes are missing
+rownames(df)
+# there are only about 7500 genes so many are missing
+rownames(df) <- c("CD24","NCAM1","ITGB1","CXCR4","PROM1",
+                  "ITGA6")
+
+#missing <- c("FUT4","CD44","PDGFRA","TH","ST3GAL2")
+# we need to add in rows of NaN values for the missing genes
+# Create a new dataframe with NaN rows for missing genes
+# Create a new dataframe with NaN rows and desired row names and column names
+new_df <- data.frame(matrix(NA, nrow = 5, ncol = ncol(df)))
+rownames(new_df) <- c("FUT4","CD44","PDGFRA","TH","ST3GAL2")
+colnames(new_df) <- colnames(df)
+
+# Merge the new dataframe with the existing dataframe
+# Combine the existing dataframe and new dataframe
+combined_df <- rbind(df, new_df)
+
+row.names <- c("CD24","NCAM1","ITGB1","FUT4",  
+                   "CXCR4","PROM1","CD44","PDGFRA","TH",
+                   "ST3GAL2","ITGA6")
+# reorder
+# Reorder the rows based on the desired row names
+reordered_df <- combined_df[row.names, ]
+head(reordered_df)
+# check the cell type names
+colnames(reordered_df)
+
+# [1] combine "ExcitatoryNeuron"  "InhibitoryNeuron"
+# I'll take the average
+df <- reordered_df
+
+df$Neuron <- rowMeans(df[, c("ExcitatoryNeuron","InhibitoryNeuron")])
+df <- df %>% select(-c("ExcitatoryNeuron","InhibitoryNeuron"))
+# change to same cell type names
+head(df)
+colnames(df) 
+# we might consider IPC as IPSC/StemCell or as NPC
+
+# z-score
+zero.one <- t(apply(df, MARGIN = 1, FUN = function(X) (X - min(X, na.rm = TRUE))/diff(range(X, na.rm = TRUE))))
+
+# Assign the column names from the reference data frame to the normalized matrix
+scCO <- zero.one
+
+# quick visualization
+heatmap(scCO, 
+        Rowv = NA,  # Don't cluster rows
+        Colv = NA,  # Don't cluster columns
+        col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
+        main = "Cerebral Organoids")
+```
+
+Now combine the organoids scRNA and then brain transcriptomic data
+
+```{r}
+# merge the brain orgainds
+
+org1 <- scMO
+org2 <- scCO
+df_org <- merge(org1, org2, by = "row.names")
+# add the row names to the merged data frame
+rownames(df_org) <- df_org$Row.names
+# remove the newly created Row.names column
+df_org <- df_org %>% select(-"Row.names")
+colnames(df_org)
+
+# take means of the overlapping cell types
+df_org$neurons <- rowMeans(df_org[, c("Neurons","Neuron")], na.rm = TRUE)
+df_org$astrocytes <- rowMeans(df_org[, c("Astrocyte","Astrocytes")], na.rm = TRUE)
+df_org$radialglia <- rowMeans(df_org[, c("RadialGlia","RG")], na.rm = TRUE)
+df_org <- df_org %>% select(c("IPC","Epithelial","neurons","DA-Neurons",
+                   "DA-NPC","astrocytes","radialglia"))
+## now take means of the organoids and the brain sequencing
+## first merge
+df_RNA <- merge(df_org, RNAbrain, by = "row.names")
+rownames(df_RNA) <- df_RNA$Row.names
+df_RNA <- df_RNA %>% select(-"Row.names")
+colnames(df_RNA)
+# take means
+df_RNA$Neuron <- rowMeans(df_RNA[, c("neuron","neurons")], na.rm = TRUE)
+df_RNA$Neuron.DA <- rowMeans(df_RNA[, c("DA-Neurons","neuronDA")], na.rm = TRUE)
+df_RNA$NPC.DA <- rowMeans(df_RNA[, c("DA-NPC","NPC-DA")], na.rm = TRUE)
+df_RNA$StemLike <- rowMeans(df_RNA[, c("IPC","Stem")], na.rm = TRUE)
+df_RNA$Astrocyte <- rowMeans(df_RNA[, c("Astrocytes","astrocytes")], na.rm = TRUE)
+df_RNA$RG <- rowMeans(df_RNA[, c("radialglia","RadialGlia")], na.rm = TRUE)
+colnames(df_RNA)
+# select the mean values and other cell types
+df_RNA <- df_RNA %>% select("Astrocyte","Astrocytes.Fetal","Epithelial",
+                            "Endothelial","NPC","NPC.DA","Neuron",
+                            "Neuron.DA","OPCs","Oligo","RG",
+                            "RadialGliaDiv","StemLike")
+
+# z-score
+zero.one <- t(apply(df_RNA, MARGIN = 1, FUN = function(X) (X - min(X, na.rm = TRUE))/diff(range(X, na.rm = TRUE))))
+
+# Assign the column names from the reference data frame to the normalized matrix
+z_RNA <- zero.one
+
+# quick visualization
+heatmap(z_RNA, 
+        Rowv = NA,  # Don't cluster rows
+        Colv = NA,  # Don't cluster columns
+        col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
+        main = "Organoid and Brain RNA")
+
+
+```
+
+Combine the new panel FC and transcriptomics
+
+```{r}
+# the gene names need to be changed back to the protein/antibody names
+# Protein names:"CD133" = PROM1, "CD140a" = PDGFRA, "CD15" = FUT4,   "CD184" = CXCR4,"CD24" = CD24,"CD29" = ITGB1,"CD44" = CD44, "CD56"=NCAM1,"TH"= TH, "SSEA4" = ST3GAL2,  "CD49f"=ITGA6  
+
+gene.prot <- c("CD24", "CD44","CD184","CD15","CD49f","CD29","CD56",
+               "CD140a","CD133","SSEA4","TH")
+df <- as.data.frame(z_RNA)
+df$Markers <- gene.prot
+rownames(df) <- df$Markers
+z_RNA <- df[,1:13]
+df_panel2 <- merge(z_RNA, fcz, by = "row.names")
+colnames(df_panel2)
+rownames(df_panel2) <- df_panel2$Row.names
+# take means where available 
+df_panel2$Astrocyte <- rowMeans(df_panel2[, c("Astrocyte.x",
+                                              "Astrocyte.y")],
+                                na.rm = TRUE)
+df_panel2$opc <- rowMeans(df_panel2[, c("OPCs","OPC")],
+                                na.rm = TRUE)
+df_panel2$Oligos <- rowMeans(df_panel2[, c("Oligo.x","Oligo.y")],
+                                na.rm = TRUE)
+df_panel2$NPC <- rowMeans(df_panel2[, c("NPC.x","NPC.y")],
+                                na.rm = TRUE)
+df_panel2$NPCDA <- rowMeans(df_panel2[, c("NPC.DA","DANPC")],
+                                na.rm = TRUE)
+df_panel2$Neuron <- rowMeans(df_panel2[, c("Neuron.x","Neuron.y")],
+                                na.rm = TRUE)
+df_panel2$NeuronDA <- rowMeans(df_panel2[, c("Neuron.DA","DANeuron")],
+                                na.rm = TRUE)
+df_panel2$StemCell <- rowMeans(df_panel2[, c("IPSC","StemLike")],
+                                na.rm = TRUE)
+
+df_panel2 <- df_panel2 %>% select("Astrocyte","Astrocytes.Fetal",
+                                  "Epithelial","Endothelial",
+                                  "opc","Oligos","NPC","NPCDA",
+                                  "Neuron","NeuronDA","RG",
+                                  "RadialGliaDiv", "StemCell")
+# z-score
+zero.one <- t(apply(df_panel2, MARGIN = 1, FUN = function(X) (X - min(X, na.rm = TRUE))/diff(range(X, na.rm = TRUE))))
+
+# Assign the column names from the reference data frame to the normalized matrix
+z_panel2 <- zero.one
+
+# quick visualization
+heatmap(z_panel2, 
+        Rowv = NA,  # Don't cluster rows
+        Colv = NA,  # Don't cluster columns
+        col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
+        main = "Reference Matrix")
+
+# if some cell type need to remove the data should be z-scored again
+
+# save the panel
+output_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/"
+write.csv(z_panel2, paste(output_path,"ReferenceMatrixPanel2.csv",sep = ""))
+
+
+
+```
+
+
+
+Read in Reference matrix and plot.  Change column and AB order as needed.
+
+```{r}
+df <- read.csv("/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/ReferenceMatrixPanel2.csv")
+
+# we need to remove the marker column and add these are row names
+rownames(df) <- df$X
+df <- df %>% select(-"X")
+
+# heatmap function take a matix
+mat <- as.matrix(df)
+
+heatmap(mat, 
+        Rowv = NA,  # Don't cluster rows
+        Colv = NA,  # Don't cluster columns
+        col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
+        main = "Reference Matrix")
+
+
+
+```
+
+
+
+
+
+
+
 

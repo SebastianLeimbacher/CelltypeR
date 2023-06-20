@@ -31,6 +31,7 @@ library(Seurat)
 library(dplyr) 
 library(ggplot2)
 library(CelltypeR)
+library(flowCore)
 
 ```
 
@@ -139,7 +140,7 @@ You can save the data frame and seurat object for later
 write.csv(df, paste(output_path,"df1000.csv", sep = ""))
 
 # save the seurat object
-saveRDS(seu, paste(output_path, "seuratObject1000.csv", sep = ""))
+saveRDS(seu, paste(output_path, "seuratObject1000.RDS", sep = ""))
 
 
 
@@ -343,6 +344,8 @@ plotmean(plot_type = 'heatmap',seu = seu, group = 'RNA_snn_res.1', markers = AB,
 
 
 ```
+
+Note: If you find the clusters do not appear to be grouped by cell types, go back and explore diffrent clustering conditions.
 
 ```{r}
 # predict cell type from looking at expression patterns
