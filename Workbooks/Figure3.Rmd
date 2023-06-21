@@ -22,18 +22,57 @@ Figure 3A - predicted correlation matrix
 ```{r}
 # Figure 3A 
 # Plot the reference matrix for correlation
-#reference_path <- "/GITHUB/CelltypeR/Data/ReferenceMatrix9celltypesOrdered.csv"
+reference_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/FinalReferenceMatrix.csv"
 reference_data <- read.csv(reference_path)
+# the reference matrix need to be in the format cell types as rows and markers as columns
+# there is a column X with the markers
+#colnames(reference_data)
+# we need a row X with the cell type names
+# Transpose the dataframe and convert values to numeric
 
-test_path <- "/Users/df_fromflowset.csv"
+reference_data <- rbind(reference_data, colnames(reference_data))
+rownames(reference_data) <- reference_data$X
+reference_data <- reference_data %>% select(-"X")
+df_ref <- as.data.frame(t(reference_data))
+# make it numeric
+df_ref2 <- apply(df_ref, 2, as.numeric)
+df_ref2 <- as.data.frame(df_ref2)
+# add back the cell type column
+df_ref2$X <- df_ref$X
+colnames(df_ref2)
+rownames(df_ref2) <- df_ref2$X
+head(df_ref2)
+# Plot the reference matrix
+
+
+```
+
+Calculate correlations
+
+```{r}
+
+test_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/9MBO/prepro_outsjan20-9000cells/prepro_outsretrotransformed_flowset.csv"
 
 test.df <- read.csv(test_path)
+dim(test.df)
+head(test.df)
 
-cor <- find_correlation(test = test.df, reference = reference_data,
-                        min_corr = 0.45, min_diff = 0.1)
+# with 13 antibodies R value of 0.553 has a significant p value less than 0.05
+cor1 <- find_correlation(test = test.df, reference = df_ref,
+                        min_corr = 0.553, min_diff = 0.05)
+# see how the cells mostly would be assigned if not for the threshold
+cor2 <- find_correlation(test = test.df, reference = df_ref,
+                        min_corr = 0, min_diff = 0.05)
+
 # threshold for assigning unknown is R < 0.45
-# threshold for double label is R1-R2 < 0.1
 
+# threshold for double label is R1-R2 < 0.05
+
+
+```
+
+Plot correlations
+```{r}
 # Figure 3B
 # plot the main groups - and the correlation co-efficient for the assigned group
 # note  a similar plot is created by the plot_corr function
@@ -74,10 +113,10 @@ plot_corr(cor)
 #   plot1
 # dev.off()
 
-
-
-
 ```
+
+
+
 
 
 Figure 3 clustering

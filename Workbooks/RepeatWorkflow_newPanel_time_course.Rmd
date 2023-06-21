@@ -360,8 +360,6 @@ cor.ann <- get_annotation(seu, seu.cluster = seu$RNA_snn_res.1,
 cor.ann
 dim(cor.ann)
 
-
-
 unique(cor.ann$CAM)
 length(cor.ann$CAM)
 
@@ -660,7 +658,6 @@ seu <- annotate(seu, annotations = combine_types, to_label = "RNA_snn_res.1", an
 DimPlot(seu, group.by = "CellTypes", label = TRUE, repel = TRUE)
 
 
-
 ```
 
 Save the Seurat object
@@ -692,17 +689,178 @@ saveRDS(rf, paste(output_path,"trainedRFMfromTimeCourseSub.Rds",sep =""))
 
 ```
 
-Now I will use the full dataset
+Now I will use the full data set
 The cell types will be more clear with the full data set.
 
 
 ```{r}
+input_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/TimeCourseAIW/LiveCells"
+output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/TimeCourseAIW/Analysis/"
 
+# 1.a Read in FlowJo Files 
+
+# down sample to take cells from each of 4 time points and 4 replicates
+flowset <- fsc_to_fs(input_path)
+# down sample can be a number, 'none' or 'min'
+
+# look at file names and rename with shorter sample names
+sampleNames(flowset) # function in flowCore
+
+```
+
+Rename samples with shorter names
+
+```{r}
+sampleNames(flowset) <- sampleNames(flowset) <- c("AIW_150_R1","AIW_150_R2","AIW_150_R3","AIW_150_R4",
+  "AIW_30_R1","AIW_30_R2","AIW_30_R3","AIW_30_R4",
+  "AIW_60_R1","AIW_60_R2","AIW_60_R3","AIW_60_R4",
+  "AIW_100_R1","AIW_100_R2","AIW_100_R3","AIW_100_R4"
+                                                  )
+sampleNames(flowset)
+```
+
+Harmonize data to remove batch or technical variation
+
+This requires us to look and see where there are two peaks to align. We need to visualize the peaks of the transformed data before aligning.
+
+```{r}
+
+
+# we can decided what level of processing to choose with the argument 'processing'
+# biexp only applies a biexponential transformation
+# align applies biexp transform and then aligns peaks
+# retro (default), transforms, aligns and then reverse transforms
+flowset_biexp <- harmonize(flowset, processing = 'biexp')
+# we can visualize the peaks to see where there are two peaks for alignment
+
+# we need to enter the column index for which peaks to align, the alignment for one or two peaks is not the same. 
+#plotdensity_flowset(flowset)
+
+#p1 <- plotdensity_flowset(flowset_biexp) # to see the peaks
+#p1
+# if there are two peaks assign as two peaks and one peak as one in the code chunk below
+
+flowset_align <- harmonize(flowset, processing = 'align', 
+                           two_peaks = c(9:11,15,17:21,25:31,33:42),
+                       one_peak = c(1:8,12:14,16,24,32,43), threshold = 0.01)
+
+flowset_retro <- harmonize(flowset, processing = 'retro', 
+                           two_peaks = c(9:11,15,17:21,25:31,33:42),
+                       one_peak = c(1:8,12:14,16,24,32,43), threshold = 0.01)
+### test again later without running library(flowCore)
+df <- flowset_to_csv(flowset_retro)
+
+head(df)
+# here we have 3 measures of each channel - we want the area measure and only this should have been selected.
+# Select the first value from 
+
+colnames(df)
+
+```
+
+Filter to have only one measurement per Marker/channel (area which is the first entry)
+
+```{r}
+
+df2 <- df[!duplicated(colnames(df))]
+head(df2)
+
+write.csv(df2,paste(output_path,"FlowDFretroAllcellsTimecourse.csv"))
+
+
+```
+
+Read in the saved dataframe
+
+```{r}
+
+df2 <- read.csv(paste(output_path,"FlowDFretroAllcellsTimecourse.csv"))
+
+```
+
+
+Make the seurat object
+```{r}
+
+# antibody features in order to appear on the plots
+AB <- c("TH","CD24","CD56","CD29","CD15","CD184","CD133","SSEA4","CD44","CD49f","CD140a")
+
+seu <- make_seu(df2, AB_vector = AB)
+
+```
+Have a look at the object
+
+```{r}
+#RidgePlot(seu, features = AB, log = TRUE)
+DimPlot(seu, group.by = "Sample", reduction = "pca")
+#colSums(seu) %>% summary
+VlnPlot(seu, features = c("TH","CD24"))
+
+```
+
+```{r}
+saveRDS(seu, paste(output_path,"SeuTimeCourseAll.RDS",sep=""))
 
 ```
 
 
 
+Cluster
+```{r}
+# running from base R via terminal.  With some many cells this crashes R studio.
+# use the parameter from above
+seu <- get_clusters(seu, method = "louvain",
+                    df_input = df.input,
+                    k = 80,
+                    resolution = c(1),
+                    pcdim = 1:10,
+                    plots = TRUE,
+                    save_plots = FALSE)
+
+```
+
+
+
+```{r}
+seu2 <- readRDS(paste(output_path,"SeuTimeCourseAll.RDS",sep=""))
+
+```
+
+
+
+# Annotate clusters
+1. Visualization for manual annotation. - output by clustering function
+2. CAM (Correlation assignment model) - requires reference matrix
+3. RFM (Random Forest Model) - requires annotated matching flow dataset
+4. Seurat label transfer - requires annotated matching flow data in a seurat object
+
+
+Predict with CAM
+```{r}
+
+reference_path2 <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/ReferenceMatrixPanel2Timecourse.csv"
+reference_data2 <- read.csv(reference_path)
+# the reference matrix need to be in the format cell types as rows and markers as columns
+# there is a column X with the cell type names
+df1 <- reference_data2
+rownames(df1) <- df1$X
+df1 <- df1 %>% select(-"X")
+df2 <- as.data.frame(t(df1))
+df2$X <- rownames(df2)
+head(df2)
+input <- read.csv(paste(output_path,"df2000Timecourse4.csv", sep = ""))
+input_df <- input %>% select(c("X",AB,"cell","Sample"))
+head(input_df)
+
+cor <- find_correlation(test = input_df, 
+                        reference = df2, 
+                        min_corr = 0.45, 
+                        min_diff = 0.05)
+dim(input_df) # rows x columns
+colnames(input_df)
+colnames(df2)
+
+```
 
 
 

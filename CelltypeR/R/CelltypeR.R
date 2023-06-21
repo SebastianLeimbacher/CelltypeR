@@ -820,7 +820,7 @@ get_clusters <- function(seu, method = "louvain",
 #Correlation assignment method,
 # predicts cell types based on each cells correlation to the matrix types
 # creates plots and tables of the prediction outputs.
-# takes arguement for "unknown" threshold (default 0.4)  and "double-label" thresholod(0.05)
+# takes argument for "unassigned" threshold (default 0.4)  and "double-label" thresholod(0.05)
 
 
 #' CAM predict cell types in Flow Cytometry data by correlation to an existing reference matrix
@@ -885,7 +885,7 @@ find_correlation <- function(test,
                 reference[top[1], 'X'], #col 3: 1st best cell type
                 corr_ls[top[2]], #col 4: 2nd correlation
                 reference[top[2], 'X'], #col 5: 2nd best cell type
-                ifelse(corr_ls[top[1]] < min_corr, "unknown",
+                ifelse(corr_ls[top[1]] < min_corr, "unassigned",
                        ifelse(corr_ls[top[1]] - corr_ls[top[2]] < min_diff,
                               paste(reference[top[1], 1],
                                     reference[top[2], 1], sep = "-"),
@@ -909,37 +909,67 @@ find_correlation <- function(test,
 #' The function requires the data frame output from the find_correlation function
 
 #' @export
-#' @importFrom dplyr filter group_by
+#' @importFrom dplyr filter group_by select
 #' @import ggplot2 dplyr
 
-
-plot_corr <- function(df) {
+plot_corr <- function(df, threshold = 0, min_cells = 100) {
   # filter to get frequency table and save as csv
   df.f <- df %>% select(cell.label)
   freq.table <- as.data.frame(table(df.f))
-  df.filter <- df %>% group_by(cell.label) %>% dplyr::filter(n()> 100)
+  df.filter <- df %>% group_by(cell.label) %>% dplyr::filter(n()> min_cells)
 
   # plot the frequencies
-  plot1 <-
-    ggplot(df.filter, aes(x = reorder(
+  plot1 <- ggplot(df.filter, aes(x = reorder(
+    cell.label, cell.label, function(x) -length(x)),
+    fill = cell.label)) +
+    geom_bar() +
+    theme_classic() +
+    theme(axis.text.x = element_text(size = 12, colour = "black", angle = 90, hjust=0.99,vjust=0.5),
+          axis.text.y = element_text(size = 12, colour = "black"),
+          axis.title.x = element_text(size = 14, colour = "black"),
+          axis.title.y = element_text(size = 14, colour = "black"),
+          plot.margin = margin(15, 1, 1, 1)) +
+
+    scale_y_continuous(expand = c(0, 0)) + # take the space away below the bars
+    xlab('Assigned cell type') +
+    ylab('number of cell') +
+    labs(fill = 'Cell Types')
+  # print(plot1)
+
+  # plot without the unassigned
+  df.filter2 <- df %>%
+    filter(cell.label != "Unassigned") %>%
+    group_by(cell.label) %>%
+    filter(n() > min_cells)
+
+  plot1b <-
+    ggplot(df.filter2, aes(x = reorder(
       cell.label, cell.label, function(x) - length(x)),
       fill = cell.label)) + geom_bar() + theme_classic() +
-    theme(axis.text.x = element_text(angle = 90)) +
+    theme(axis.text.x = element_text(size = 12, colour = "black", angle = 90, hjust=0.99,vjust=0.5),
+          axis.text.y = element_text(size = 12, colour = "black"),
+          axis.title.x = element_text(size = 14, colour = "black"),
+          axis.title.y = element_text(size = 14, colour = "black"),
+          plot.margin = margin(15, 1, 1, 1)) +
+
+    scale_y_continuous(expand = c(0, 0)) + # take the space away below the bars
     xlab('Assigned cell type') +
     ylab('number of cell') +
     labs(fill='Cell Types')
-  # print(plot1)
 
-  # violin plot of best correlation/cell type
-  plot2 <-
-    ggplot(df, aes(x = best.cell.type, y = cor.1)) +
-    geom_violin()+
-    ylim(-0.1, 1)+
+  # violin plot of best correlation/cell type with threshold shown or not
+
+  plot2 <- ggplot(df.filter, aes(x = best.cell.type, y = cor.1, fill = best.cell.type)) +
+    geom_violin(trim = FALSE) +
+    ylim(-0.01, 1) +
     theme_classic() +
-    theme(axis.text.x = element_text(angle = 90)) +
+    theme(text = element_text(size = 14), axis.text.x = element_text(angle = 90, size = 12)) +
     ylab("correlation coefficient") +
-    xlab("Cell type with max correlation coefficient")
-  # print(plot2)
+    xlab("Cell type with max correlation coefficient") +
+    geom_hline(yintercept = threshold) +
+    guides(fill = guide_legend(title = "Cell Type"))
+
+
 
   df.melt <- melt(df) #reformat to long df
 
@@ -989,19 +1019,25 @@ plot_corr <- function(df) {
   double.cells <- df[grep("-", df$cell.label),]
   df.melt.double <- melt(double.cells)
 
-  # # this will be an excellent visualization but I need to subset only the double labels, then I can plot more cells and see more clearly.
-  plot6 <-
-    ggplot(df.melt.double, aes(x = variable, y = value,colour= variable, group= X)) +
-    geom_line(show.legend = F, size = 0.1, color = "black") +
-    geom_point()+
-    scale_color_manual(values = c("#4E84C4", "#52854C")) +
-    ylim(-0.15,0.8) +
-    facet_wrap(~(as.factor(cell.label))) +
-    ylab("Correlation Coefficient") +
-    xlab("")
-  # print(plot6)
+  # # this will be an excellent visualization but I need to subset only the double labels,
+  #then I can plot more cells and see more clearly.
+  if (length(unique(df.melt.double$cell.label)) > 1) {
+    plot6 <- ggplot(df.melt.double, aes(x = variable, y = value, colour = variable, group = X)) +
+      geom_line(show.legend = FALSE, size = 0.1, color = "black") +
+      geom_point() +
+      scale_color_manual(values = c("#4E84C4", "#52854C")) +
+      ylim(-0.15, 0.8) +
+      facet_wrap(~ as.factor(cell.label)) +
+      ylab("Correlation Coefficient") +
+      xlab("")
+  } else {
+    # If there are no valid values for cell.label, create an empty plot
+    plot6 <- ggplot() +
+      theme_void()
+    print("length of double cells is less than 1")
+  }
 
-  return(list(freq.table, plot1, plot2, plot3, plot4, plot5, plot6))
+  return(list(freq.table, plot1, plot1b, plot2, plot3, plot4, plot5,plot6))
 }
 
 
