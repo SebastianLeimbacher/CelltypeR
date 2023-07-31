@@ -12,9 +12,9 @@ library(Seurat)
 library(dplyr)
 library(ggplot2)
 library(reshape2)
+library(CelltypeR)
 
 ```
-
 
 Figure 3A - predicted correlation matrix
 
@@ -43,9 +43,54 @@ colnames(df_ref2)
 rownames(df_ref2) <- df_ref2$X
 head(df_ref2)
 # Plot the reference matrix
+rownames(reference_data) <- reference_data$X
+df_ref1 <- reference_data %>% select(-"X")
+mat <- as.matrix(df_ref1)
+
+hm <- heatmap(mat, 
+        Rowv = NA,  # Don't cluster rows
+        Colv = NA,  # Don't cluster columns
+        col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
+        main = "Reference Matrix")
+
+hm
+
+```
+
+Plot with ggplot Figure 3A
+
+```{r}
+
+colnames(mat) <- c("Astrocyte","Endothelial","Epithelial","Neuron",
+                   "NPC","OPC","Oligo","RG","Stem")
+
+marker.order <- rev(c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4"))
+# reformat df
+long_df <- melt(mat, varnames = c("Marker", "Cell_Type"), value.name = "Expression")
+long_df$Marker <- factor(long_df$Marker, levels = marker.order)
+
+hm <- ggplot(long_df, aes(x = Cell_Type, y = Marker, fill = Expression)) +
+  geom_tile(color = "white") +  # Remove the black border by setting color to "white"
+  scale_fill_gradient(low = "seashell2", high = "red3") +
+  labs(x = "Cell Type", y = "Marker", fill = "Relative Expression") + 
+  theme_bw() +
+  theme(panel.border = element_blank(),  # Remove the panel border
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 12, colour = "black"), 
+        axis.text.y = element_text(hjust = 1 ,vjust = 0.5, size = 12, colour = "black"),
+        axis.title = element_text(colour = "black", size = 14),
+        panel.grid = element_blank(),
+        axis.ticks = element_blank())  # Remove the panel grid
+
+hm
+
+pdf("/Users/rhalenathomas/Documents/Projects_Papers/PhenoID/ForFigures/June2023/ReferenceMatrix.pdf", width = 6.5, height = 5)
+hm
+dev.off()
 
 
 ```
+
+
 
 Calculate correlations
 
@@ -58,62 +103,202 @@ dim(test.df)
 head(test.df)
 
 # with 13 antibodies R value of 0.553 has a significant p value less than 0.05
-cor1 <- find_correlation(test = test.df, reference = df_ref,
+cor1 <- find_correlation(test = test.df, reference = df_ref2,
                         min_corr = 0.553, min_diff = 0.05)
+
+write.csv(cor1, "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/9MBO/prepro_outsjan20-9000cells/correlations/cor9000cellsRthresh0553_june2023B.csv")
+
+cor1 <- read.csv("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/9MBO/prepro_outsjan20-9000cells/correlations/cor9000cellsRthresh0553_june2023B.csv")
+
+
 # see how the cells mostly would be assigned if not for the threshold
-cor2 <- find_correlation(test = test.df, reference = df_ref,
-                        min_corr = 0, min_diff = 0.05)
+cor2 <- find_correlation(test = test.df, reference = df_ref2,
+                        min_corr = 0.1, min_diff = 0.05)
 
-# threshold for assigning unknown is R < 0.45
+write.csv(cor2, "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/9MBO/prepro_outsjan20-9000cells/correlations/cor9000cellsRthresh01_june2023.csv")
 
-# threshold for double label is R1-R2 < 0.05
+head(cor2)
+
+cor3 <- find_correlation(test = test.df, reference = df_ref2,
+                        min_corr = 0.35, min_diff = 0.05)
+
+write.csv(cor3, "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/9MBO/prepro_outsjan20-9000cells/correlations/cor9000cellsRthresh035_june2023.csv")
 
 
 ```
 
 Plot correlations
+Figure 3B, C and S3
+
 ```{r}
-# Figure 3B
+
 # plot the main groups - and the correlation co-efficient for the assigned group
-# note  a similar plot is created by the plot_corr function
+# plots are created by the plot_corr function, which uses ggplot2
+plot_corr(cor1, threshold = 0.553, min_cells = 70) 
+plot_corr(cor2, threshold = 0.1, min_cells = 500)
+plot_corr(cor3, threshold = 0.35, min_cells = 500)
 
-df <- cor %>% filter(!grepl('-',cell.label))
+# save the plots
+fig_outs <- "/Users/rhalenathomas/Documents/Projects_Papers/PhenoID/ForFigures/June2023/"
 
-thresh1 <- 0.45
-ggplot(df, aes(x=best.cell.type, y=cor.1, fill = best.cell.type))+ geom_violin(trim = FALSE)+ ylim(0,1)+theme_classic()+
-   theme(text = element_text(size = 18), axis.text.x=element_text(angle=90, size = 15)) + ylab("correlation coefficient") + xlab("Cell type with max correlation coefficient") +
-  geom_hline(yintercept = thresh1) +
-  guides(fill = guide_legend(title = "Cell Phenotype"))
+p.cor1 <- plot_corr(cor1, threshold = 0.553, min_cells = 70)
 
-#save this plot for figure 3B
-# pdf(paste(output_path,"Vln.max.cor.main.cells.pdf"),height = 4, width = 6)
-# ggplot(df, aes(x=best.cell.type, y=cor.1, fill = best.cell.type))+ geom_violin(trim = FALSE)+ ylim(0,1)+theme_classic()+
-#    theme(text = element_text(size = 15), axis.text.x=element_text(angle=90, size = 12)) + ylab("correlation coefficient") + xlab("Cell type with max correlation coefficient") +
-#   geom_hline(yintercept = thresh1) +
-#   guides(fill = guide_legend(title = "Cell Phenotype"))
-# dev.off()
+pdf(paste(fig_outs,"CorPlots_thresh0553.pdf",sep = ""))
+p.cor1
+dev.off()
+
+p.cor2 <- plot_corr(cor2, threshold = 0.1, min_cells = 500)
 
 
-# Figure 3 C - bar chart of the frequency of assigned cell types with cut-off freq 400
-## remove the unknown cell types
-df <- cor
-df.filter <- df %>% filter(!grepl('unknown',cell.label))
-# filter for only frequent double cell types
-df.filter <- df.filter %>% group_by(cell.label) %>% dplyr::filter(n()> 500)
 
-plot1 <- ggplot(df.filter, aes(x=reorder(cell.label,cell.label,function(x)-length(x)), fill = cell.label))+ geom_bar()+theme_classic() +
-   theme(text = element_text(size = 16), axis.text.x=element_text(angle=90, hjust = 1))+ xlab('Assigned cell type') + ylab('Number of cells') +
-    guides(fill = guide_legend(title = "Cell Phenotype")) 
+pdf(paste(fig_outs,"CorPlots_thresh01.pdf",sep = ""))
+p.cor2
+dev.off()
+#How many cells are there in each category - this is in the frequency table
+freq.cor2.df <- as.data.frame(p.cor2[[1]])
 
-plot1
+p.cor3 <- plot_corr(cor3, threshold = 0.35, min_cells = 500)
+
+pdf(paste(fig_outs,"CorPlots_thresh035.pdf",sep = ""))
+p.cor3
+dev.off()
+#How many cells are there in each category - this is in the frequency table
+freq.cor3.df <- as.data.frame(p.cor3[[1]])
 
 
-plot_corr(cor)
-# pdf(paste(output_path,"BarFreq.known400plus.pdf",sep=""),width =6, height = 4)
-#   plot1
-# dev.off()
 
 ```
+Adjust pair of cell types plots to plot mixes with higher cell counts
+Figures S4,S5,S6 
+
+```{r}
+# Define the threshold number of pairs
+df <- cor1 # threshold 0.553
+threshold <- 8
+
+# Filter the double-labeled cells
+double.cells <- df[grep("-", df$cell.label),]
+label_counts <- table(double.cells$cell.label)
+filters_labels <- names(label_counts[label_counts >= threshold])
+# Filter the double-labeled cells based on the filtered labels
+filtered_double.cells <- double.cells[double.cells$cell.label %in% filters_labels, ]
+
+# Melt the filtered double-labeled cells for plotting
+df.melt.filtered <- melt(filtered_double.cells)
+
+# Plot the filtered double-labeled cells
+p1 <- ggplot(df.melt.filtered, aes(x = variable, y = value, colour = variable, group = X))+
+      geom_line(show.legend = FALSE, size = 0.1, color = "black") +
+      geom_point() +
+      scale_color_manual(values = c("#4E84C4", "#52854C","purple","orange")) +
+      ylim(0, 1) +
+      facet_wrap(~ as.factor(cell.label)) +
+      ylab("Correlation Coefficient") +
+      xlab("")
+
+p1
+
+pdf(paste(fig_outs,"CAMcorpairs_thresh0553.pdf",sep=""))
+p1
+dev.off()
+
+```
+
+
+```{r}
+# Define the threshold number of pairs
+df <- cor3 # threshold 0.35
+threshold <- 150
+
+# Filter the double-labeled cells
+double.cells <- df[grep("-", df$cell.label),]
+label_counts <- table(double.cells$cell.label)
+filters_labels <- names(label_counts[label_counts >= threshold])
+# Filter the double-labeled cells based on the filtered labels
+filtered_double.cells <- double.cells[double.cells$cell.label %in% filters_labels, ]
+
+# Melt the filtered double-labeled cells for plotting
+df.melt.filtered <- melt(filtered_double.cells)
+
+# Plot the filtered double-labeled cells
+p2 <- ggplot(df.melt.filtered, aes(x = variable, y = value, colour = variable, group = X))+
+      geom_line(show.legend = FALSE, size = 0.1, color = "black") +
+      geom_point() +
+      scale_color_manual(values = c("#4E84C4", "#52854C","purple","orange")) +
+      ylim(0.1, 0.8) +
+      facet_wrap(~ as.factor(cell.label)) +
+      ylab("Correlation Coefficient") +
+      xlab("")
+
+p2
+
+pdf(paste(fig_outs,"CAMcorpairs_thresh35.pdf",sep=""))
+p2
+dev.off()
+
+```
+
+
+
+Make plots for Figure 3B and C
+
+```{r}
+
+# plotting script from inside the function above
+threshold = 0.553
+min_cells = 55
+
+# violin plot
+df.filter <- cor1 %>% group_by(cell.label) %>% dplyr::filter(n()> min_cells)
+
+plot2 <- ggplot(df.filter, aes(x = best.cell.type, y = cor.1, fill = best.cell.type)) +
+    geom_violin(trim = FALSE) +
+    ylim(0, 1) +
+    theme_classic() +
+    theme(text = element_text(size = 14), axis.text.x = element_text(angle = 90, size = 12)) +
+    ylab("correlation coefficient") +
+    xlab("Cell type with max correlation coefficient") +
+    geom_hline(yintercept = threshold) +
+    guides(fill = guide_legend(title = "Cell Type"))
+
+
+# save
+pdf(paste(fig_outs,"VlnCAMthresh533.pdf",sep=""),width = 5,height = 4)
+plot2
+dev.off()
+# bar chart with the R > 0.553 threshold
+
+df.filter2 <- cor1 %>%
+    filter(!cell.label %in% c("Unassigned", "unassigned")) %>%
+    group_by(cell.label) %>%
+    filter(n() > min_cells)
+  
+
+  plot1b <-
+    ggplot(df.filter2, aes(x = reorder(
+      cell.label, cell.label, function(x) - length(x)),
+      fill = cell.label)) + geom_bar() + theme_classic() +
+    theme(axis.text.x = element_text(size = 12, colour = "black", angle = 90, hjust=0.99,vjust=0.5),
+          axis.text.y = element_text(size = 12, colour = "black"),
+          axis.title.x = element_text(size = 14, colour = "black"),
+          axis.title.y = element_text(size = 14, colour = "black"),
+          plot.margin = margin(15, 1, 1, 1)) +
+
+    scale_y_continuous(expand = c(0, 0)) + # take the space away below the bars
+    xlab('Assigned cell type') +
+    ylab('number of cell') +
+    labs(fill='Cell Types')
+  
+
+pdf(paste(fig_outs,"BarchartCAMthresh533.pdf",sep=""),width = 5,height = 4)
+plot1b
+dev.off()
+
+plot1b  
+plot2
+
+```
+
 
 
 
@@ -141,72 +326,127 @@ DimPlot(seu, reduction = "umap", label = TRUE, group.by = 'RNA_snn_res.0.7', rep
 
 
 
-# annotate cells 
+```
+
+Add different correlation assignments and visualize on UMAP from the low threshold for CAM
+
+```{r, fig.width=5}
+
+seu <- AddMetaData(object=seu, metadata= cor2$cell.label, col.name = 'cor.labels01')
+
+# see the labels added
+#unique(seu$cor.labels01)
+
+# plot the cluster predictions
+#plot_lab_clust(seu, seu$RNA_snn_res.0.7, seu$cor.labels01)
+
+DimPlot(seu, group.by = 'cor.labels01', label = TRUE) + theme(legend.position = "none")
+
+# removing the combined cell labels that are low frequency will improve visualization
+# Check if the cell type has a frequency less than 500 and assign new label accordingly
+
+# Check if the cell type has a frequency less than 500 and assign new label accordingly
+cor2$cell.label.ft <- ifelse(cor2$cell.label %in% freq.cor2.df$cell.label[freq.cor2.df$Freq < 500], "few", cor2$cell.label)
+
+
+seu <- AddMetaData(object=seu, metadata= cor2$cell.label.ft, col.name = 'cor.labels01ft')
+unique(seu$cor.labels01ft)
+plot_lab_clust(seu, seu$RNA_snn_res.0.7, seu$cor.labels01ft)
+
+DimPlot(seu, group.by = 'cor.labels01ft', label = TRUE, 
+        label.size = 8, repel = TRUE) + theme(legend.position = "none")
+
+
+```
+Visualize CAM with the signifance 0.553 threshold
+
+```{r, fig.width=5}
+
+seu <- AddMetaData(object=seu, metadata= cor1$cell.label, col.name = 'cor.labels05')
+
+# see the labels added
+unique(seu$cor.labels05)
+
+
+DimPlot(seu, group.by = 'cor.labels05', label = TRUE) + theme(legend.position = "none")
+
+
+```
+
+Visualize CAM assignments with threshold R = 0.35
+
+```{r, fig.width=5}
+
+seu <- AddMetaData(object=seu, metadata= cor3$cell.label, col.name = 'cor.labels035')
+
+# see the labels added
+#unique(seu$cor.labels01)
+
+# plot the cluster predictions
+#plot_lab_clust(seu, seu$RNA_snn_res.0.7, seu$cor.labels01)
+
+DimPlot(seu, group.by = 'cor.labels035', label = TRUE) + theme(legend.position = "none")
+
+# removing the combined cell labels that are low frequency will improve visualization
+# Check if the cell type has a frequency less than 500 and assign new label accordingly
+
+# Check if the cell type has a frequency less than 500 and assign new label accordingly
+cor3$cell.label.ft <- ifelse(cor3$cell.label %in% freq.cor3.df$cell.label[freq.cor3.df$Freq < 200], "few", cor3$cell.label)
+
+
+seu <- AddMetaData(object=seu, metadata= cor3$cell.label.ft, col.name = 'cor.labels035ft')
+unique(seu$cor.labels035ft)
+
+DimPlot(seu, group.by = 'cor.labels035ft', label = TRUE, 
+        label.size = 8, repel = TRUE) + theme(legend.position = "none")
+
+
+```
+
+Get the top assigned cells per cluster for each threshold
+
+```{r}
+cor.ann.035 <- get_annotation(seu, seu.cluster = seu$RNA_snn_res.0.7, 
+                          seu.label = seu$cor.labels035, top_n = 3, 
+                          filter_out = c("Unknown","unknown","Mixed", 
+                                         "unassigned","Unassigned"), 
+                          Label = "CAM")
+cor.ann.01 <- get_annotation(seu, seu.cluster = seu$RNA_snn_res.0.7, 
+                          seu.label = seu$cor.labels01, top_n = 3, 
+                          filter_out = c("Unknown","unknown","Mixed","
+                                         unassigned","Unassigned"), 
+                          Label = "CAM")
+cor.ann.05 <- get_annotation(seu, seu.cluster = seu$RNA_snn_res.0.7, 
+                          seu.label = seu$cor.labels05, top_n = 3, 
+                          filter_out = c("Unknown","unknown","Mixed",
+                                         "unassigned","Unassigned"), 
+                          Label = "CAM")
+
+
+```
+
+Visualize Marker expression
+
+```{r}
+length(unique(seu$RNA_snn_res.0.7))
+# 19
+# if we want to plot by cluster we need a vector of from 0 to the n-1 clusters
+cluster.num <- c(0:18)
+
+plotmean(plot_type = 'heatmap',seu = seu, group = 'RNA_snn_res.0.7', markers = AB, 
+                     var_names = cluster.num, slot = 'scale.data', xlab = "Cluster",
+         ylab = "Antibody")
+
+
+```
+Feature plots
+
+```{r}
 Idents(seu) <- "RNA_snn_res.0.7"
-cluster.ids <- c("LowLabel","Neuron-Glia","Neurons1","RG1","Epi1","Epi-Astro","Neu-OPC","RG-Astro",
-                 "Astro","Astro-m","Neurons2","Mix-early-Neu","RG2","RG3","endo","oligo","stem-epi","stem",
-                 "neuralstem")
 
-names(cluster.ids) <- levels(seu)
-seu <- RenameIdents(seu, cluster.ids)
-seu$labels <- Idents(seu)
-
-
-# with more subgroups
-
-Idents(seu) <- "RNA_snn_res.0.7"
-cluster.ids <- c("Unknown","Mixed","Neurons 1","Radial Glia 1","Epithelial","Astrocytes 1","Neurons 2","Astrocytes 1",
-                 "Astrocytes 1","Astrocytes 2","Neurons 2","NPC","Radial Glia 2",
-                 "Radial Glia 2","Endothelial","Oligodendrocytes","Stem cell like","Stem cell like",
-                 "Stem cell like")
-
-names(cluster.ids) <- levels(seu)
-seu <- RenameIdents(seu, cluster.ids)
-seu$cell.types <- Idents(seu)
-
-DimPlot(seu, reduction = "umap", label = TRUE, group.by = 'cell.types', repel = TRUE)
-# there are 13 levels in the cell type annatotion with major groups
-
-# change the order of the cell types on the legend of the umap
-cell.type.order <- c("Astrocytes 1", "Astrocytes 2","Radial Glia 1","Radial Glia 2",
-                     "Epithelial","Endothelial","NPC","Neurons 1","Neurons 2",
-                     "Oligodendrocytes","Stem cell like","Mixed","Unknown")
-cell.type.order <- rev(cell.type.order)
-
-# colour order to match cell type order
-clust.colours <- c("chocolate1","orange","lightsalmon", "pink",
-                   "steelblue3","deepskyblue","plum3","purple","orchid2",
-                   "seagreen3","tomato3","burlywood3","grey90")
-                   
-                   
- #                  "plum1","purple","magenta3","mediumpurple1","darkorchid","plum3",
-#             "steelblue3","darkorange1","orange1","lightcoral","coral1","orangered1","lightsalmon",
- #            "cyan")
-
-# Figure 3D UMAP with annotated clusters
-
-# use PDF for figure for correct resolution
-# pdf(paste(output_path,"UMAPlabelled9000.08072022.noraster.pdf"),width = 10, height = 5)
-# DimPlot(seu, order = cell.type.order, cols = clust.colours, shuffle = TRUE, raster=FALSE,pt.size = 0.1, label = FALSE) +
-#   theme(legend.text = element_text(size=24), axis.title.y = element_text(size=24), 
-#         axis.title.x = element_text(size=24), axis.text.y = element_text(size =24),
-#         axis.text.x = element_text(size =24))
-# dev.off()
-
-DimPlot(seu, order = cell.type.order, cols = clust.colours, shuffle = TRUE, raster=FALSE,pt.size = 0.1, label = TRUE)
-
-######## figure 3E heatmap of the 
-
-# reorder the bars to match the UMAP
-levels(seu) <- c("Astrocytes 1", "Astrocytes 2","Radial Glia 1","Radial Glia 2",
-                     "Epithelial","Endothelial","NPC","Neurons 1","Neurons 2",
-                     "Oligodendrocytes","Stem cell like","Mixed","Unknown")
-
-#pdf(paste(output_path,"HM9000.08072022.pdf"),width = 8, height = 5)
-DoHeatmap(seu, features = AB, size= 6,slot = "scale.data", group.colors = clust.colours, disp.max = 2, disp.min = -1.5,
-          angle = 90) + scale_fill_gradientn(colors = c("#154c79", "#eeeee4", "#e28743")) + 
-  theme(axis.text.y = element_text(size = 15))
-#dev.off()
+for (i in AB) {
+  print(FeaturePlot(seu, features = i, min.cutoff = 'q1', max.cutoff = 'q97', label = TRUE))
+}
 
 
 ```
@@ -214,6 +454,107 @@ DoHeatmap(seu, features = AB, size= 6,slot = "scale.data", group.colors = clust.
 
 
 
+```{r}
 
+
+# annotate cells 
+Idents(seu) <- "RNA_snn_res.0.7"
+cluster.ids <- c("Unassigned","Glial-lineage","Neurons 1","Radial Glia 1",
+            "Radial Glia 3","Epithelial","Neurons 2",
+            "Astrocytes 1","Astrocytes 1",
+                 "Astrocytes 2","Neurons 2","NPC","Radial Glia 1",
+            "Radial Glia 2",
+                 "Endothelial","Oligodendrocytes","OPC","Stem cell like",
+                 "NPC")
+
+names(cluster.ids) <- levels(seu)
+seu <- RenameIdents(seu, cluster.ids)
+seu$labels <- Idents(seu)
+
+DimPlot(seu, label = TRUE)
+# with more subgroups
+Idents(seu) <- "labels"
+levels(seu)
+
+# there are 16 levels in the cell type annotations with major groups
+
+# change the order of the cell types on the legend of the umap
+cell.type.order <- c("Astrocytes 1", "Astrocytes 2","Radial Glia 1","Radial Glia 2",
+                     "Radial Glia 3","Glial-lineage",
+                     "Epithelial","Endothelial",
+                     "NPC","Neurons 1","Neurons 2",
+                     "Oligodendrocytes","OPC","Stem cell like","Unassigned")
+cell.type.order <- rev(cell.type.order)
+
+# colour order to match cell type order
+clust.colours <- c("chocolate2","darkorange","pink","coral1","lightpink3",
+                   "mistyrose2",
+                   "steelblue3","deepskyblue",
+                   "mediumpurple1","purple","plum3",
+                   "seagreen3","olivedrab4","tomato3","burlywood3")
+                   
+                   
+ #                  "plum1","purple","magenta3","mediumpurple1","darkorchid","plum3",
+#             "steelblue3","darkorange1","orange1","lightcoral","coral1","orangered1","lightsalmon",
+ #            "cyan")
+
+# Figure 3D UMAP with annotated clusters
+# use PDF for figure for correct resolution
+pdf(paste(fig_outs,"UMAPlabelled9000.noraster.pdf"),width = 9, height = 5)
+ DimPlot(seu, order = cell.type.order, cols = clust.colours, shuffle = TRUE, raster=FALSE,pt.size = 0.1, label = FALSE) +
+   theme(legend.text = element_text(size=16), axis.title.y = element_text(size=16), 
+         axis.title.x = element_text(size=16), axis.text.y = element_text(size =16),
+        axis.text.x = element_text(size =16))
+ dev.off()
+
+DimPlot(seu, order = cell.type.order, cols = clust.colours, shuffle = TRUE, raster=FALSE,pt.size = 0.1, label = TRUE)
+
+######## figure 3E heatmap of the 
+
+# reorder the bars to match the UMAP
+levels(seu) <- c("Astrocytes 1", "Astrocytes 2","Radial Glia 1","Radial Glia 2",
+                     "Radial Glia 3","Glial-lineage",
+                     "Epithelial","Endothelial",
+                     "NPC","Neurons 1","Neurons 2",
+                     "Oligodendrocytes","OPC","Stem cell like","Unassigned")
+
+pdf(paste(fig_outs,"HM9000_fig3E.pdf"),width = 8.5, height = 5)
+DoHeatmap(seu, features = AB, size= 6,slot = "scale.data", group.colors = clust.colours, disp.max = 2, disp.min = -1.5,
+          angle = 90) + scale_fill_gradientn(colors = c("#154c79", "#eeeee4", "#e28743")) + 
+  theme(axis.text.y = element_text(size = 15))
+dev.off()
+
+```
+
+```{r}
+saveRDS(seu,"/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Seu9000lablesJune23.RDS")
+
+seu <-readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Seu9000lablesJune23.RDS") 
+
+```
+
+Train a Random Forest classifier
+
+```{r}
+
+# get the names of hte meta data to know the annotations to call
+colnames(seu@meta.data)
+
+DimPlot(seu, group.by = "labels")
+
+```
+```{r}
+
+markers <- rev(c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4"))
+rf <- RFM_train(seurate_object = seu, 
+                             AB_list = markers, annotations = seu$labels,
+                      split = c(0.5,0.5),
+                      downsample = "none",
+                      seed = 222,
+                      mytry = c(1:10),
+                      maxnodes = c(10: 20),
+                      trees = c(250, 500, 1000,2000),
+                      start_node = 15)
+```
 
 

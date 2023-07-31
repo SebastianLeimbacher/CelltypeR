@@ -244,9 +244,6 @@ heatmap(mat,
 
 ```
 
-
-
-
 Some more visualization of expression values
 
 ```{r}
@@ -268,7 +265,7 @@ plotmean(plot_type = 'heatmap',seu = seu, group = 'RNA_snn_res.1', markers = AB,
 
 ```
 
-Skip for now
+Add annotations based on expression
 
 
 ```{r}
@@ -291,8 +288,6 @@ man.ann
 saveRDS(seu, paste(output_path, "Seurat_temp.RDS", sep = ""))
 
 ```
-
-
 
 Predict cell annotations with CAM (Correlations assignment method)
 
@@ -452,9 +447,6 @@ all <- c(proteins,genes)
 
 seu <- seurat_predict(seu, seu.r, ref_id = 'subgroups', down.sample = 500, markers = all)
 
-
-
-
 ```
 
 ```{r}
@@ -474,7 +466,6 @@ seu.ann
 
 seu.ann.ft <- seu.ann[!duplicated(as.character(seu.ann$Cluster)), ]
 rownames(seu.ann.ft) <- NULL
-
 
 
 ```
@@ -498,11 +489,9 @@ DimPlot(seu, group.by = "CellType")
 
 # unfortunately for the consensus to work we need the cell type names to be identical
 
-
-
 ```
 
-Just use the annotate functions
+Use the annotate function
 
 ```{r}
 
@@ -610,7 +599,6 @@ plotmean(plot_type = 'heatmap',seu = seu, group = 'CelltypesMain', markers = AB,
 ```
 
 
-
 ```{r}
 # dot plot
 var_names <- c("earlyDA-NPC","earlyGlia","Neurons","Astrocytes","stem-like",
@@ -691,7 +679,7 @@ saveRDS(rf, paste(output_path,"trainedRFMfromTimeCourseSub.Rds",sep =""))
 
 Now I will use the full data set
 The cell types will be more clear with the full data set.
-
+With the amount of cells in the full time course data this cannot be run in a workbook without down sampling. 
 
 ```{r}
 input_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/TimeCourseAIW/LiveCells"

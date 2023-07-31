@@ -938,9 +938,10 @@ plot_corr <- function(df, threshold = 0, min_cells = 100) {
 
   # plot without the unassigned
   df.filter2 <- df %>%
-    filter(cell.label != "Unassigned") %>%
+    filter(!cell.label %in% c("Unassigned", "unassigned")) %>%
     group_by(cell.label) %>%
     filter(n() > min_cells)
+
 
   plot1b <-
     ggplot(df.filter2, aes(x = reorder(
@@ -961,7 +962,7 @@ plot_corr <- function(df, threshold = 0, min_cells = 100) {
 
   plot2 <- ggplot(df.filter, aes(x = best.cell.type, y = cor.1, fill = best.cell.type)) +
     geom_violin(trim = FALSE) +
-    ylim(-0.01, 1) +
+    ylim(0, 1) +
     theme_classic() +
     theme(text = element_text(size = 14), axis.text.x = element_text(angle = 90, size = 12)) +
     ylab("correlation coefficient") +
@@ -989,7 +990,7 @@ plot_corr <- function(df, threshold = 0, min_cells = 100) {
     ylim(-0.25, 1)+
     theme_classic()+
     theme(axis.text.x = element_text(angle = 90)) +
-    scale_fill_manual(values = c("#4E84C4", "#52854C")) +
+    scale_fill_manual(values = c("#4E84C4", "#52854C","purple","orange")) +
     ylab("correlation coefficient") + xlab("Cell type")
   # the second best correlation is so low it was removed from STEM with axis limit -0.1 and even -1
   # down sample
@@ -1008,7 +1009,7 @@ plot_corr <- function(df, threshold = 0, min_cells = 100) {
     ggplot(df.melt.down, aes(x = variable, y = value,colour = variable, group = X)) +
     geom_line(show.legend = F, size = 0.1, color = "black") +
     geom_point()+
-    scale_color_manual(values = c("#4E84C4", "#52854C")) +
+    scale_color_manual(values = c("#4E84C4", "#52854C","purple","orange")) +
     ylim(-0.25, 0.95) +
     facet_wrap(~(as.factor(best.cell.type))) +
     theme(legend.position = "none") +
@@ -1025,8 +1026,8 @@ plot_corr <- function(df, threshold = 0, min_cells = 100) {
     plot6 <- ggplot(df.melt.double, aes(x = variable, y = value, colour = variable, group = X)) +
       geom_line(show.legend = FALSE, size = 0.1, color = "black") +
       geom_point() +
-      scale_color_manual(values = c("#4E84C4", "#52854C")) +
-      ylim(-0.15, 0.8) +
+      scale_color_manual(values = c("#4E84C4", "#52854C","purple","orange")) +
+      #ylim(-0.15, 0.8) +
       facet_wrap(~ as.factor(cell.label)) +
       ylab("Correlation Coefficient") +
       xlab("")
@@ -1064,22 +1065,24 @@ plot_corr <- function(df, threshold = 0, min_cells = 100) {
 #' @import data.table randomForest caret
 #' @importFrom randomForest randomForest
 #' @importFrom caret trainControl train
-
+#' @importFrom doParallel registerDoParallel stopImplicitCluster
+#' @import foreach
 RFM_train <- function(seurate_object,
                       AB_list, annotations = seu$CellTypes,
-                      split = c(0.5,0.5),
+                      split = c(0.8,0.2),
                       downsample = 'none',
                       seed = 222,
-                      mytry = c(1:10),
+                      mytry = c(6:12),
                       maxnodes = c(12:25),
                       trees = c(250, 500, 1000,2000),
-                      start_node = 12){
+                      start_node = 12,
+                      cores_to_use = 4){
   # set up the data
   nodes <- maxnodes # for renaming later
   seu <- seurate_object
   AB <- AB_list
   all_features <- seu@assays[["RNA"]]@counts@Dimnames[[1]]
-  df <- transpose(as.data.frame(GetAssayData(seu,slot = 'scale.data')))
+  df <- as.data.frame(t(as.data.frame(GetAssayData(seu,slot = 'scale.data'))))
   # add antibody/marker names
   colnames(df) <- all_features
   df <- df[, AB_list]
@@ -1088,10 +1091,10 @@ RFM_train <- function(seurate_object,
   df.l <- cbind(df, lables = ann)
   # downsample option
   if(downsample == 'none'){
-    df1 <- df.l
+    df1 <- as.data.frame(df.l)
   } else {
     # down sample - randomly selecting X rows from the dataframe
-    df1 <- sample_n(df.l, downsample)
+    df1 <- as.data.frame(sample_n(df.l, downsample))
   }
   # split in to training and test
   set.seed(seed)
@@ -1123,7 +1126,11 @@ RFM_train <- function(seurate_object,
   print("Searching for best max node size")
   store_maxnode <- list()
   tuneGrid <- expand.grid(.mtry = best_mtry)
-  for (maxnodes in maxnodes) {
+
+  # Parallelize the loop for max node size search
+  registerDoParallel(cores = cores_to_use)
+
+  store_maxnode <- foreach(maxnodes = maxnodes, .combine = c) %dopar% {
     rf_maxnode <- train(lables~.,
                         data = train,
                         method = "rf",
@@ -1134,9 +1141,9 @@ RFM_train <- function(seurate_object,
                         nodesize = start_node,
                         maxnodes = maxnodes,
                         ntree = 300)
-    current_iteration <- toString(maxnodes)
-    store_maxnode[[current_iteration]] <- rf_maxnode
+    return(rf_maxnode)
   }
+
   results_node <- resamples(store_maxnode)
   results_sum <- summary(results_node)
   # summarize results makes another list object with accuracy
@@ -1159,8 +1166,7 @@ RFM_train <- function(seurate_object,
   print(paste("The max accuracy is ",max_accuracy, ". For the maxnodes of ",
               max_node, sep = ""))
 
-  # now search of the best number of trees
-  print("searching for best number of trees")
+  # Searching for best number of trees using foreach for parallelization
   store_maxtrees <- list()
   for (ntree in trees) {
     rf_maxtrees <- train(lables~.,
@@ -1176,6 +1182,10 @@ RFM_train <- function(seurate_object,
     key <- toString(ntree)
     store_maxtrees[[key]] <- rf_maxtrees
   }
+
+  # stop the parallel computation
+  stopImplicitCluster()
+
   # get the best number of trees
   results_tree <- resamples(store_maxtrees)
   results_sum <- (summary(results_tree))
@@ -1207,8 +1217,8 @@ RFM_train <- function(seurate_object,
                      maxnodes = as.numeric(max_node))
 
   # check the results of the true model
-  prediction.train <-predict(rf, train)
-  prediction.test <-predict(rf, test)
+  prediction.train <- predict(rf, train)
+  prediction.test <- predict(rf, test)
 
   print("predict training data")
   print(confusionMatrix(prediction.train, train$lables))
@@ -1218,7 +1228,6 @@ RFM_train <- function(seurate_object,
   # return the model - can save after
   return(rf)
 }
-
 
 
 ##############################################################################################
@@ -1232,12 +1241,13 @@ RFM_train <- function(seurate_object,
 
 #' @export
 #' @importFrom stats predict
-RFM_predict <- function(seu, rf){
+RFM_predict <- function(seu, rf, markers){
   # prepare a data object to be test data
-  df <- transpose(as.data.frame(GetAssayData(seu,slot = 'scale.data')))
-  colnames(df) <- AB
+  df <- t(as.data.frame(GetAssayData(seu,slot = 'scale.data')))
+  colnames(df) <- markers
   # run the predictions
   rfm.pred <- as.data.frame(predict(rf,df))
+  colnames(rfm.pred) <- "Prediction"
   return(rfm.pred)
 }
 

@@ -864,7 +864,7 @@ rf <- RFM_train(seurate_object = seu,
                       trees = c(250, 500, 1000,2000),
                       start_node = 15)
 
-#save(rf, output_path,"trainedRFM.Rds")
+#saveRDS(rf, "trainedRFM.Rds")
 
 ```
 
