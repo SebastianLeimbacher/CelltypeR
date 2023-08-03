@@ -4,7 +4,7 @@
 \alias{clust_stability}
 \title{Test the stability or reproducibility of clusters across kn or resolutions}
 \usage{
-clust_stability(input, resolutions, kn, n = 100, save_to = NULL)
+clust_stability(input, resolutions, kn, pcdim = 1:10, n = 100, save_to = NULL)
 }
 \description{
 For Louvain clustering in a seurat object test calculate the RAND Index. For n iterations

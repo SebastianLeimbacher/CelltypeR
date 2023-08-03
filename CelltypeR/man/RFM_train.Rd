@@ -6,15 +6,16 @@
 \usage{
 RFM_train(
   seurate_object,
-  AB_list,
+  marker_list,
   annotations = seu$CellTypes,
-  split = c(0.5, 0.5),
+  split = c(0.8, 0.2),
   downsample = "none",
   seed = 222,
-  mytry = c(1:10),
+  mytry = c(6:12),
   maxnodes = c(12:25),
   trees = c(250, 500, 1000, 2000),
-  start_node = 12
+  start_node = 12,
+  cores_to_use = 4
 )
 }
 \description{

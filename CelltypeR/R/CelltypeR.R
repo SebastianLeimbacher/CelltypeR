@@ -1,5 +1,8 @@
 # CellTypeR functions
 
+# note: warnings occur for packages maptools rgdal and rgeos
+# rgeos is phenograph, ggplot2 dependency
+# maptools is a ggplot2 dependency
 
 
 ####### Preprocessing functions to create seurat object from Flow cytometry multichannel data ####
@@ -917,7 +920,6 @@ plot_corr <- function(df, threshold = 0, min_cells = 100) {
   df.f <- df %>% select(cell.label)
   freq.table <- as.data.frame(table(df.f))
   df.filter <- df %>% group_by(cell.label) %>% dplyr::filter(n()> min_cells)
-
   # plot the frequencies
   plot1 <- ggplot(df.filter, aes(x = reorder(
     cell.label, cell.label, function(x) -length(x)),
@@ -927,8 +929,7 @@ plot_corr <- function(df, threshold = 0, min_cells = 100) {
     theme(axis.text.x = element_text(size = 12, colour = "black", angle = 90, hjust=0.99,vjust=0.5),
           axis.text.y = element_text(size = 12, colour = "black"),
           axis.title.x = element_text(size = 14, colour = "black"),
-          axis.title.y = element_text(size = 14, colour = "black"),
-          plot.margin = margin(15, 1, 1, 1)) +
+          axis.title.y = element_text(size = 14, colour = "black")) +
 
     scale_y_continuous(expand = c(0, 0)) + # take the space away below the bars
     xlab('Assigned cell type') +
@@ -938,9 +939,9 @@ plot_corr <- function(df, threshold = 0, min_cells = 100) {
 
   # plot without the unassigned
   df.filter2 <- df %>%
-    filter(!cell.label %in% c("Unassigned", "unassigned")) %>%
+    dplyr::filter(!cell.label %in% c("Unassigned", "unassigned")) %>%
     group_by(cell.label) %>%
-    filter(n() > min_cells)
+    dplyr::filter(n() > min_cells)
 
 
   plot1b <-
@@ -1068,167 +1069,94 @@ plot_corr <- function(df, threshold = 0, min_cells = 100) {
 #' @importFrom doParallel registerDoParallel stopImplicitCluster
 #' @import foreach
 RFM_train <- function(seurate_object,
-                      AB_list, annotations = seu$CellTypes,
-                      split = c(0.8,0.2),
-                      downsample = 'none',
-                      seed = 222,
-                      mytry = c(6:12),
-                      maxnodes = c(12:25),
-                      trees = c(250, 500, 1000,2000),
-                      start_node = 12,
-                      cores_to_use = 4){
-  # set up the data
-  nodes <- maxnodes # for renaming later
+                          markers, annotations = seu$CellTypes,
+                          split = c(0.5, 0.5),
+                          downsample = 'none',
+                          seed = 222,
+                          mytry = c(6:12),
+                          maxnodes = c(12:25),
+                          trees = c(250, 500, 1000, 2000),
+                          start_node = 12,
+                          cores_to_use = 4) {
+
   seu <- seurate_object
-  AB <- AB_list
   all_features <- seu@assays[["RNA"]]@counts@Dimnames[[1]]
-  df <- as.data.frame(t(as.data.frame(GetAssayData(seu,slot = 'scale.data'))))
-  # add antibody/marker names
+  df <- as.data.frame(t(as.data.frame(GetAssayData(seu, slot = 'scale.data'))))
   colnames(df) <- all_features
-  df <- df[, AB_list]
-  # add the annotations
+  df <- df[, markers]
   ann <- annotations
-  df.l <- cbind(df, lables = ann)
-  # downsample option
-  if(downsample == 'none'){
+  df.l <- cbind(df, labels = ann)
+  if (downsample == 'none') {
     df1 <- as.data.frame(df.l)
   } else {
-    # down sample - randomly selecting X rows from the dataframe
     df1 <- as.data.frame(sample_n(df.l, downsample))
   }
-  # split in to training and test
   set.seed(seed)
-  ind <- sample(2, nrow(df1), replace = TRUE, prob = split) # prop is the proportions
-  # split the data into train and test
-  train <- na.omit(df1[ind==1,])
-  test <- na.omit(df1[ind==2,])
-  # need to start with a basic model to optimize
-  trControl <- trainControl(method = "cv", number = 10, search ="grid")
+  ind <- sample(2, nrow(df1), replace = TRUE, prob = split)
+  train <- na.omit(df1[ind == 1,])
+  test <- na.omit(df1[ind == 2,])
+  trControl <- trainControl(method = "cv", number = 10, search = "grid")
 
-  # test different parameters
-  # mtry: number of features to draw - default is the squareroot of the number of columns
-  mtry.range <- mytry
-  print("optimize number of features to draw")
-  tuneGrid <- expand.grid(.mtry = mtry.range)
-  rf_mtry <- train(lables~.,
-                   data=train,
-                   method = "rf",
-                   metric = "Accuracy",
-                   tuneGrid = tuneGrid,
-                   trControl = trControl,
-                   importance = TRUE,
-                   nodesize = start_node,
-                   ntree = 300)
-  print(paste("Best number of features to draw is ",rf_mtry$bestTune$mtry, sep = ""))
-  print(paste("Max accuracy is ", max(rf_mtry$results$Accuracy), sep=""))
-  best_mtry <- rf_mtry$bestTune$mtry
-  # best node size
-  print("Searching for best max node size")
-  store_maxnode <- list()
-  tuneGrid <- expand.grid(.mtry = best_mtry)
-
-  # Parallelize the loop for max node size search
+  # Searching for the best mytry and maxnode
   registerDoParallel(cores = cores_to_use)
-
-  store_maxnode <- foreach(maxnodes = maxnodes, .combine = c) %dopar% {
-    rf_maxnode <- train(lables~.,
-                        data = train,
-                        method = "rf",
-                        metric = "Accuracy",
-                        tuneGrid = tuneGrid,
-                        trControl = trControl,
-                        importance = TRUE,
-                        nodesize = start_node,
-                        maxnodes = maxnodes,
-                        ntree = 300)
-    return(rf_maxnode)
-  }
-
-  results_node <- resamples(store_maxnode)
-  results_sum <- summary(results_node)
-  # summarize results makes another list object with accuracy
-  results_sum$statistics$Accuracy
-  # find the max accuracy and the max nodes with the max accuracy
-  sum.df.2 <- data.frame(results_sum$values)
-  max_accuracy <- max(sum.df.2)
-  #print(paste("Max accuracy is ",max_accuracy))
-  sum.df.2 <- select(sum.df.2, -contains("Kappa"))
-  colnames(sum.df.2) <- nodes
-  for(i in (1:10)){
-    #print(colnames(sum.df.2)[which.max(sum.df.2[i,])])
-    #print(max(sum.df.2[i,]))
-    max.temp <- max(sum.df.2[i,])
-    if(max.temp == max_accuracy){
-      max_node <-colnames(sum.df.2)[which.max(sum.df.2[i,])]
-      #print(paste("Max node is ", max_node, sep=""))
+  results_list <- list()
+  for (mytry_val in mytry) {
+    for (maxnode_val in maxnodes) {
+      for (tree_val in trees) {
+        tryCatch({
+          print(paste("Testing mytry:", mytry_val, ", maxnode:", maxnode_val, ", tree number:", tree_val))
+          tuneGrid <- expand.grid(.mtry = mytry_val)
+          rf_result <- train(labels ~ .,
+                             data = train,
+                             method = "rf",
+                             metric = "Kappa",
+                             tuneGrid = tuneGrid,
+                             trControl = trControl,
+                             importance = TRUE,
+                             nodesize = maxnode_val,
+                             ntree = tree_val)
+          results_list[[paste("mytry_", mytry_val, "_maxnode_", maxnode_val, "_tree_", tree_val)]] <- rf_result
+        }, error = function(e) {
+          print(paste("Error for mytry:", mytry_val, ", maxnode:", maxnode_val, ", tree number:", tree_val))
+          print(e)
+        })
+      }
     }
   }
-  print(paste("The max accuracy is ",max_accuracy, ". For the maxnodes of ",
-              max_node, sep = ""))
 
-  # Searching for best number of trees using foreach for parallelization
-  store_maxtrees <- list()
-  for (ntree in trees) {
-    rf_maxtrees <- train(lables~.,
-                         data = train,
-                         method = "rf",
-                         metric = "Accuracy",
-                         tuneGrid = tuneGrid,
-                         trControl = trControl,
-                         importance = TRUE,
-                         nodesize = start_node,
-                         maxnodes = as.numeric(max_node),
-                         ntree = ntree)
-    key <- toString(ntree)
-    store_maxtrees[[key]] <- rf_maxtrees
-  }
-
-  # stop the parallel computation
   stopImplicitCluster()
+  print("Finished testing mytry, maxnode, and tree number.")
 
-  # get the best number of trees
-  results_tree <- resamples(store_maxtrees)
-  results_sum <- (summary(results_tree))
-  # make a data frame with the summary results
-  sum.df.2 <- data.frame(results_sum$values)
-  #print(paste("Max accuracy is ",max_accuracy))
-  sum.df.2 <- select(sum.df.2, -contains("Kappa"))
-  colnames(sum.df.2) <- trees
-  max_accuracy <- max(sum.df.2)
-  for(i in (1:10)){
-    #print(colnames(sum.df.2)[which.max(sum.df.2[i,])])
-    #print(max(sum.df.2[i,]))
-    max.temp <- max(sum.df.2[i,])
-    if(max.temp == max_accuracy){
-      best_tree <-colnames(sum.df.2)[which.max(sum.df.2[i,])]
-      print(paste("Best trees  ", best_tree, sep=""))
-    }
-  }
-  print(paste("The max accuracy is ",max_accuracy, ". For ",
-              best_tree," trees", sep = ""))
+  # Find the best mytry, maxnode, and tree number
+  best_combination <- which.max(sapply(results_list, function(res) max(res$results$Kappa)))
+  best_param <- names(results_list)[best_combination]
+  print(paste("Best parameter combination:", best_param))
+
+  # Extract the best mytry, maxnode, and tree number values
+  param_values <- unlist(strsplit(gsub(".*mytry_ (\\d+) _maxnode_ (\\d+) _tree_ (\\d+)", "\\1 \\2 \\3", best_param), " "))
+  best_mytry <- as.numeric(param_values[1])
+  best_maxnode <- as.numeric(param_values[2])
+  best_tree <- as.numeric(param_values[3])
+
+  print(paste("Best parameter mytry", best_mytry, "and max node", best_maxnode, "and tree number", best_tree, "."))
 
 
-  # now run model with the selected conditions
-  rf <- randomForest(lables~.,
-                     train,
-                     mtry = best_mtry,
-                     nodesize = start_node,
-                     ntree = as.numeric(best_tree),
-                     maxnodes = as.numeric(max_node))
+  final_rf <- randomForest(labels ~ .,
+                           data = train,
+                           mtry = best_mytry,
+                           nodesize = best_maxnode,
+                           ntree = best_tree)
 
-  # check the results of the true model
-  prediction.train <- predict(rf, train)
-  prediction.test <- predict(rf, test)
+  prediction.train <- predict(final_rf, train)
+  prediction.test <- predict(final_rf, test)
 
-  print("predict training data")
-  print(confusionMatrix(prediction.train, train$lables))
-  print("predict test data")
-  print(confusionMatrix(prediction.test, test$lables))
+  print("Predict training data")
+  print(confusionMatrix(prediction.train, train$labels))
+  print("Predict test data")
+  print(confusionMatrix(prediction.test, test$labels))
 
-  # return the model - can save after
-  return(rf)
+  return(final_rf)
 }
-
 
 ##############################################################################################
 

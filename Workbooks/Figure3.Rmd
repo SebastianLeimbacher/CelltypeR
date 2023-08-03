@@ -546,15 +546,29 @@ DimPlot(seu, group.by = "labels")
 ```{r}
 
 markers <- rev(c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4"))
-rf <- RFM_train(seurate_object = seu, 
-                             AB_list = markers, annotations = seu$labels,
-                      split = c(0.5,0.5),
-                      downsample = "none",
+
+# mytry is for the number of features to be tested as input
+# here we have a max of 13
+rf <- RFM_train(seurate_object = seu.r, 
+                             AB_list = markers, annotations = seu.r$labels,
+                      split = c(0.8,0.2),
+                      downsample = 30000,
                       seed = 222,
-                      mytry = c(1:10),
-                      maxnodes = c(10: 20),
-                      trees = c(250, 500, 1000,2000),
-                      start_node = 15)
+                      mytry = c(8:13),
+                      maxnodes = c(12:25),
+                      trees = c(500,1000,2000),
+                      start_node = 12)
+
+
+
 ```
 
+Save the model
+
+```{r}
+
+saveRDS(rf, "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/June9MBOsub_trainedRFM.Rds")
+
+
+```
 

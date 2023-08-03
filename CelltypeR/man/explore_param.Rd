@@ -11,6 +11,7 @@ explore_param(
   flow_k = NULL,
   pheno_lou_kn = NULL,
   lou_resolution = NULL,
+  pcdim = 1:10,
   run.plot = TRUE,
   run.stats = TRUE,
   save_to = NULL

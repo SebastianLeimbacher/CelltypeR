@@ -21,6 +21,9 @@ Imports:
         flexclust(>= 1.4.1),
         kit(>= 0.0.12),
         randomForest(>= 4.7.1.1),
-        stats(>= 4.2.1)
+        stats(>= 4.2.1),
+        doParallel(>= 1.0.17),
+        caret(>= 6.0.93),
+        clusterSim(>= 0.50.1),
+        flowStats(>= 4.10.0)
         
-

@@ -4,7 +4,7 @@
 \alias{plot_corr}
 \title{Plot correlation assignment model (CAM) results}
 \usage{
-plot_corr(df)
+plot_corr(df, threshold = 0, min_cells = 100)
 }
 \description{
 The function requires the data frame output from the find_correlation function

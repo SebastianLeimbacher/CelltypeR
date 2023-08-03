@@ -10,6 +10,7 @@ get_clusters(
   df_input = NULL,
   k = 60,
   resolution = 0.8,
+  pcdim = 1:10,
   plots = TRUE,
   save_plots = FALSE
 )

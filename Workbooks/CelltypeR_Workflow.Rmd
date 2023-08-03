@@ -1,0 +1,871 @@
+---
+title: "CelltypeR workflow"
+output: html_notebook
+---
+
+1. Data preprocessing
+a. Read FlowJo files into R.
+b. Create a data frame with intensity measurements for each marker for all          samples within the experiment to be analyzed.  
+c. Harmonize data 
+d. Create dataframe
+e. Create a Seurat object
+
+2. Cluster data
+a. Explore clustering methods and parameters.
+b. Determine cluster stability
+c. Create clusters with best conditions
+
+3. Annotate clusters with cell types.
+a. Predict cell types by correlation matrix
+b. Visualize expression by cluster for manual annotation
+c. With annotated an data set train Random Forest classifier to predict cell        types.
+d. With annotated an data set predict cell types with Seurat label transfer.
+e. For each prediction calculate the top most predicted cell per cluster and        take a consensus to annotate clusters.
+f. Add cluster annotations.
+
+
+
+```{r}
+# load necessary libraries 
+library(Seurat)
+library(dplyr) 
+library(ggplot2)
+library(CelltypeR)
+library(flowCore)
+
+```
+
+
+# Preprocessing
+
+Read in the flow data
+This data should be the gated live cells.  
+All samples need to be in one folder.
+
+
+```{r}
+
+input_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/FlowDataFiles/9MBO"
+output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/"
+
+# 1.a Read in FlowJo Files 
+
+# In Figure 3 downsample to 9000 where possible
+# Here downsample to 1000 to speed up computation
+flowset <- fsc_to_fs(input_path, downsample = 1000)
+# down sample can be a number, 'none' or 'min'
+
+# look at file names and rename with shorter sample names
+
+sampleNames(flowset)
+sampleNames(flowset) <- sampleNames(flowset) <- c("3450_0306","AIW002_0306","AJG001C_0306","3450_0317A","AIW002_0317A","AJG001C_0317A","3450_0317B","AIW002_0317B","AJG001C_0317B")
+sampleNames(flowset)
+
+
+# if we want to save the flowset object now we can 
+# this would be read back in with flowset 
+# 
+
+
+
+```
+
+Harmonize data to remove batch or technical variation
+
+This requires us to look and see where there are two peaks to align. We need to visualize the peaks of the transformed data before aligning.
+
+```{r}
+
+
+# we can decided what level of processing to choose with the argument 'processing'
+# biexp only applies a biexponential transformation
+# align applies biexp transform and then aligns peaks
+# retro (default), transforms, aligns and then reverse transforms
+flowset_biexp <- harmonize(flowset, processing = 'biexp')
+# we can visualize the peaks to see where there are two peaks for alignment
+
+# we need to enter the column index for which peaks to align, the alignment for one or two peaks is not the same. 
+#plotdensity_flowset(flowset)
+#plotdensity_flowset(flowset_biexp) # to see the peaks
+
+flowset_align <- harmonize(flowset, processing = 'align', 
+                           two_peaks = c(7:20),
+                       one_peak = c(1:6,21), threshold = 0.01)
+
+flowset_retro <- harmonize(flowset, processing = 'retro', 
+                           two_peaks = c(7:20),
+                       one_peak = c(1:6,21), threshold = 0.01)
+### test again later without running library(flowCore)
+df <- flowset_to_csv(flowset_retro)
+
+
+
+
+```
+
+Now we have made all the different processing of the fsc files.  We can visualize the intensity in cell density plots to see the alignment
+
+```{r}
+#plotdensity_flowset(flowset)
+
+plotdensity_flowset(flowset_biexp)
+plotdensity_flowset(flowset_align)
+#plotdensity_flowset(flowset_retro)
+
+
+```
+
+
+
+
+```{r}
+
+# the function make_seu will take in the df of expression and Antibody/Marker list as a vector and create a seurat object. Values are scaled. Marker expression will be in the "RNA" slot. PCA is calculated using AB vector as the features 
+
+# make sure to always keep the same antibody order or your labels will not be correct
+
+
+# antibody features in order to appear on the plots
+AB <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+seu <- make_seu(df, AB_vector = AB)
+
+
+```
+You can save the data frame and seurat object for later
+
+```{r}
+
+
+# to save the df for later
+write.csv(df, paste(output_path,"df1000.csv", sep = ""))
+
+# save the seurat object
+saveRDS(seu, paste(output_path, "seuratObject1000.RDS", sep = ""))
+
+
+
+```
+
+
+Read in the csv of the flow files processed and the seurat object
+
+```{r}
+df.input <- read.csv(paste(output_path, "df1000.csv", sep = ""))
+
+seu <- readRDS(paste(output_path, "seuratObject1000.csv", sep = ""))
+
+```
+
+# Test out clustering methods
+1. Flowsom - requires the data frame from above
+2. Phenograph - requires Seurat object from above
+3. Louvain via Seurat - requires Seurat object from above
+
+To run intrinsic statistics we need the data frame for all clustering methods. 
+1. Silhouette score: -1 to 1.A value near -1 indicates a poor quality of the clusters a value near 1 indicates a good quality of the clusters.
+2. Calinski-Harabasz index: higher values indicate better quality clusters.
+3. Davies-Bouldin index: lower values indicate better clusters.  The min value is 0. 
+
+Note that even with only 1000 cells these processes are slow and if you want to test larger data sets use base R and HPC. 
+
+
+Test Flowsom
+
+```{r}
+
+library(clustree)
+
+# the lowest flow_k to use is 3
+
+flow.test <- explore_param(input = seu,
+                          cluster_method = 'flowsom', 
+                          df_input= df.input, 
+                          flow_k = c(5,10,15,20),
+                          pheno_lou_kn = NULL, 
+                          lou_resolution = NULL, 
+                          run.plot = TRUE, 
+                          run.stats = TRUE, 
+                          save_to = NULL)
+
+```
+Notice in the UMAPs and heatmaps a large amount of cells are all in one or two clusters and small amounts of cells going into small clusters.  This isn't good for us to label cell types. 
+
+```{r}
+# Look at the intrinsic statistics
+flow.test[[1]]
+
+```
+
+The statistics indicate that the fewer the lowest K value has the best quality clusters. 
+
+
+
+Test Phenograph clustering
+
+```{r}
+
+pheno.test <-  explore_param(seu, #for phenograph and louvain only
+                          cluster_method = 'phenograph', #take 1 cluster method
+                          df_input= df.input, #needed  if input "flowsom"
+                          flow_k = NULL, #k for flowsom
+                          pheno_lou_kn = c(150,300,500), #kn for phenograph or louvain
+                          lou_resolution = NULL, #resolution for louvain
+                          run.plot = TRUE, #print if run
+                          run.stats = TRUE, #print and return if run
+                          save_to = NULL)
+
+## clustree in phenograph doesn't make sense but I've included it to see it anyway
+
+
+
+```
+
+
+```{r}
+
+# look at the intrinsic stats table
+pheno.test[[1]]
+
+
+```
+The silhouette score and DBI are best for fewer kn = 500 but the CHI is best for kn = 300. The stats on contradicting.
+
+
+
+Test Louvain clustering
+
+```{r}
+
+# for best clustree visualization include resolution 0
+
+lou.test <- explore_param(input = seu, #for phenograph and louvain only
+                          cluster_method = "louvain", 
+                          df_input = df.input, 
+                          flow_k = NULL, 
+                          pheno_lou_kn = c(60, 200), 
+                          lou_resolution = c(0,0.25,0.5,0.8), 
+                          run.plot = TRUE, 
+                          run.stats = TRUE, 
+                          save_to = NULL)
+
+
+
+```
+
+```{r}
+lou.test[[1]]
+
+```
+The statistic differ for best clustering. 
+Overall the intrinsic statistics are not helpful for this data for choosing cluster conditions.  We decided to use the heatmaps and UMAPS for clusters that look best for annotation. We want clusters that are distinct from eachother on the UMAP and have clear markers on the heatmap. We then used the RAND Index to determine the final cluster conditions. 
+
+
+Check cluster stability - best resolution/cluster number/k value by calculating RAND Index and STD of cluster number
+
+```{r}
+
+RI <- clust_stability(input = seu,
+                       resolutions = c(0.1,0.25,0.5,0.8,1),
+                       kn = 60,
+                       n = 5, #number of iterations
+                       save_to = NULL)
+
+# it is recommended to run n= 100, however I ran only 5 here because it is long to calculate
+
+
+```
+
+```{r}
+ 
+#Look at the RI results
+plot_randindex(
+    rdf = RI$list,
+    cp = c("orange", "violet"),
+    view = c(0, 1) #zoom in x axis, this does not changes scales, just the viewable sections
+)
+
+# The RAND index indicates if cells are put into the same cluster each time the clustering is repeated - 1 mean they are exactly the same. We ran 10 times so there are 9 RI for each resolution.  There are 10 counts of the number of clusters (one for each iteration). Cluster number too low will not account for the true differences in groups, cluster numbers too high are difficult to annotate.
+
+
+```
+
+
+After checking parameters run cluster function to make add the clustering information into the 
+
+```{r}
+
+seu <- get_clusters(seu, method = "louvain",
+                         df_input = df.input,
+                         k = 60,
+                         resolution = 1,
+                         plots = TRUE,
+                         save_plots = FALSE)
+# if save_plots is TRUE the feature plots will be save as 13 plots in one file. The UMAP with cluster numbers will also be saved.
+
+```
+
+
+# Annotate clusters
+1. Visualization for manual annotation. - output by clustering function
+2. CAM (Correlation assignment model) - requires reference matrix
+3. RFM (Random Forest Model) - requires annotated matching flow dataset
+4. Seurat label transfer - requires annotated matching flow data in a seurat object
+
+Visualize expression on UMAP and with heat maps
+
+```{r}
+
+AB <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+
+
+# this will let us see one at at time
+for (i in AB) {
+  print(FeaturePlot(seu, features = i, min.cutoff = 'q1', max.cutoff = 'q97', label = TRUE))
+}
+
+
+```
+
+Some more visualization of expression values
+
+```{r}
+
+# summary heat map
+# use function plotmean
+
+length(unique(seu$RNA_snn_res.1))
+# 12 
+# if we want to plot by cluster we need a vector of from 0 to the n-1 clusters
+cluster.num <- c(0:11)
+
+plotmean(plot_type = 'heatmap',seu = seu, group = 'RNA_snn_res.1', markers = AB, 
+                     var_names = cluster.num, slot = 'scale.data', xlab = "Cluster",
+         ylab = "Antibody")
+
+
+```
+
+Note: If you find the clusters do not appear to be grouped by cell types, go back and explore diffrent clustering conditions.
+
+```{r}
+# predict cell type from looking at expression patterns
+myann <- c("unknown","glia",
+           "radial glia","neurons1", "radial glia",
+           "astrocytes","radial glia",
+           "astrocytes","neurons2",
+           "NPC","endothelial",
+           "astrocytes")
+
+man.ann <- data.frame(Cluster = c(0:11), MyAnn = myann)
+man.ann
+
+man.ann$Cluster <- as.factor(man.ann$Cluster)
+man.ann$MyAnn <- as.factor(man.ann$MyAnn)
+man.ann
+
+```
+
+```{r}
+saveRDS(seu, paste(output_path, "Seurat_temp.RDS", sep = ""))
+
+```
+
+
+
+Predict cell annotations with CAM (Corralations assignment method)
+
+```{r}
+
+reference_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/Data/ReferenceMatrix9celltypesOrdered.csv"
+
+reference_data <- read.csv(reference_path)
+
+cor <- find_correlation(test = df.input, 
+                             reference = reference_data, 
+                             min_corr = 0.45, 
+                             min_diff = 0.05)
+
+# creates a dataframe with cor1 cor2 and predicted cell type label
+
+
+
+```
+
+Visualize the CAM results
+
+```{r}
+
+plot_corr(cor)
+
+
+```
+
+Apply correlation predictions to clusters and output a vector for annotation functions
+
+```{r}
+
+
+# add the correlation predictions to the meta data
+seu <- AddMetaData(object=seu, metadata=cor$cell.label, col.name = 'cor.labels')
+# see the labels added
+unique(seu$cor.labels)
+
+seu.cluster = seu$RNA_snn_res.1
+seu.labels = seu$cor.labels
+
+# plot the cluster predictions
+plot_lab_clust(seu, seu$RNA_snn_res.1, seu$cor.labels)
+
+
+
+
+```
+
+Run get annotations function to return a vector of annotation in the order of the clusters.
+
+```{r}
+
+cor.ann <- get_annotation(seu, seu.cluster = seu$RNA_snn_res.1, 
+                          seu.label = seu$cor.labels, top_n = 3, 
+                          filter_out = c("Unknown","unknown","Mixed"), 
+                          Label = "CAM")
+cor.ann
+dim(cor.ann)
+
+cor.ann <- cor.ann[1:12,]
+dim(cor.ann)
+
+unique(cor.ann$CAM)
+length(cor.ann$CAM)
+
+```
+
+
+
+
+
+Use a trained Random Forest model to predict cell types. 
+Training of the Random Forest model with an annotated data set is below.
+
+```{r}
+
+# you must have a saved trained model from a data object annotated from the same markers
+# see the end of the workbook for how to train the model
+
+rf <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/PaperFigures/RFM_trained.11072022.Rds")
+
+AB <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+
+rfm.pred <- RFM_predict(seu, rf)
+head(rfm.pred)
+
+# add the predictions into the seurat object
+
+seu <- AddMetaData(object=seu, metadata=rfm.pred$rfm.labels, col.name = 'rfm.labels')
+
+# check that the data is added 
+table(seu$rfm.labels)
+
+
+```
+
+Get the annotation by cluster for the RFM
+
+```{r}
+
+rfm.ann <- get_annotation(seu, seu$RNA_snn_res.1,seu$rfm.labels, 
+               top_n = 3, filter_out = c("unknown","Unknown","Mixed","Mix"), Label = "RFM")
+rfm.ann
+
+#rfm.ann <- get_annotation(seu, seu$RNA_snn_res.0.8,seu$rfm.labels, 
+ #              top_n = 3, filter_out = FALSE, Label = "RFM")
+rfm.ann
+dim(rfm.ann)
+
+
+```
+
+Plot RFM predictions
+
+```{r}
+
+
+plot_lab_clust(seu, seu.cluster = seu$RNA_snn_res.1, seu.labels = seu$rfm.labels, filter_out = c("unknown","Unknown","Mixed"))
+
+
+```
+
+
+
+Predicting cell types with Seurat label transfer using anchors
+
+
+```{r}
+
+# takes in a seurat object with the labels added 
+# makes a dataframe with the count of predicted labels for each cluster
+# input seurat object with the predicted labels in the meta data
+# input the clusters meta data slot to be labels
+# input the meta data slot with the labels (correlation, random forest, seurat predicted)
+
+#need reference data object with labels
+seu.r<- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/PaperFigures/Seu9000annot.08072021.RDS")
+
+
+# the output is a seurat object with the predicted annotations
+
+seu <- seurat_predict(seu, seu.r, ref_id = 'subgroups', down.sample = 500, markers = AB)
+
+
+
+
+```
+
+```{r}
+
+# plot the seurat anchor predictions
+# get the annotation table for the seurat anchor predictions 
+
+plot_lab_clust(seu, seu$RNA_snn_res.1, seu$seu.pred)
+
+# to not filter anything use c()
+seu.ann <- get_annotation(seu, seu$RNA_snn_res.1,seu$seu.pred, 
+               top_n = 3, filter_out = c(), Label = "Seurat")
+seu.ann
+
+
+```
+
+Get a consensus of cluster annotations, Add the annotations to the seurat object
+
+
+
+```{r}
+
+# make a list of data frames
+# all the dataframes need to be as.factor
+ann.list <- list(cor.ann,rfm.ann,seu.ann, man.ann)
+
+# annotate the seurat object
+
+seu <- cluster_annotate(seu, ann.list = ann.list, 
+                        annotation_name ="CellType", 
+                        to_label = "RNA_snn_res.1")
+
+DimPlot(seu, group.by = "CellType")
+
+
+```
+
+Just use the annotate functions
+
+```{r}
+
+seu <- annotate(seu, annotations = seu.ann$Seurat, to_label = "RNA_snn_res.1", annotation_name = "SeuratTransfer")
+
+DimPlot(seu, group.by = "SeuratTransfer")
+
+```
+
+# Compare groups
+
+We first need to add the variables into the seurat object that we want to compare.
+
+```{r}
+Genotype <- c("3450","3450","3450","AIW002","AIW002","AIW002","AJG001C","AJG001C","AJG001C")
+ExDate <- c("0306","0317","0317","0306","0317","0317","0306","0317","0317")
+Batch <- c("B","B","A","B","B","A","B","B","A")
+Age <- c("273","284","263","273","284","263","273","284","263")
+
+# Genotype
+Idents(seu) <- "Sample"
+cluster.ids <- Genotype
+# vector with the new names - you need this vector from me
+
+names(cluster.ids) <- levels(seu)    # get the levels
+seu <- RenameIdents(seu, cluster.ids) # rename  
+seu$Genotype <- Idents(seu)   # add a new dataslot
+
+# Experiment date
+Idents(seu) <- "Sample"
+cluster.ids <- ExDate
+# vector with the new names - you need this vector from me
+
+names(cluster.ids) <- levels(seu)    # get the levels
+seu <- RenameIdents(seu, cluster.ids) # rename  
+seu$ExDate <- Idents(seu)   # add a new dataslot
+
+# Batch
+Idents(seu) <- "Sample"
+cluster.ids <- Batch
+# vector with the new names - you need this vector from me
+
+names(cluster.ids) <- levels(seu)    # get the levels
+seu <- RenameIdents(seu, cluster.ids) # rename  
+seu$Batch <- Idents(seu)   # add a new dataslot
+
+# days in final differentiation media
+Idents(seu) <- "Sample"
+cluster.ids <- Age
+# vector with the new names - you need this vector from me
+
+names(cluster.ids) <- levels(seu)    # get the levels
+seu <- RenameIdents(seu, cluster.ids) # rename  
+seu$DaysinCulture <- Idents(seu)   # add a new dataslot
+
+
+
+```
+
+Plots some variables to look for differences between groups
+
+```{r}
+# one plot
+proportionplots(seu.q,seu.var = seu$Genotype, seu.lable = seu$CellType, groups = "Genotype")
+# add colours
+colours <- c("chocolate1","chocolate3","orange",
+                   "lightsalmon", "pink","lightpink3",
+                   "steelblue3","deepskyblue",
+                   "plum3","purple",
+                   "seagreen3","tomato4","burlywood3","grey90","brown",
+             "royalblue3", "tan4","yellowgreen")
+
+proportionplots(seu.q,seu.var = seu$Genotype, seu.lable = seu$CellType, groups = "Genotype", my_colours = colours)
+
+```
+
+```{r}
+var.list <- list(seu$DaysinCulture,seu$Batch,seu$ExDate,seu$Genotype)
+varnames <- c("Days in Culture", "Batch", "Experiment Date", "Genotype")
+# plot all the variables of interest at once
+
+plotproportions(seu, var.list = var.list, xgroup = seu$CellType, varnames = varnames, my_colours = c("blue","red"))
+
+
+
+
+```
+
+Make a heat map 
+
+```{r}
+
+# make sure the order is correct and there are only the amount of different cell types.  The order can be found in the dimplot above 
+
+var_names <- c("unknown","astrocyte","epithelial","neurons 1",
+               "endothelial", "npc","astrocytes")
+
+plotmean(plot_type = 'heatmap',seu = seu, group = 'CellType', markers = AB, 
+                     var_names = var_names, slot = 'scale.data', xlab = "Cell Type",
+         ylab = "Antibody")
+
+
+
+
+```
+
+
+
+```{r}
+# dot plot
+var_names <- c("unknown","astrocyte","epithelial","neurons 1",
+               "endothelial", "npc","astrocytes")
+
+
+# make sure the terms are exactly the same and you don't miss any
+new.order <- c("astrocyte","astrocytes","endothelial","epithelial","neurons 1",
+               "npc","unknown")
+new.order <- rev(new.order)
+
+AB.order <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+
+plotmean(plot_type = 'dotplot',seu = seu, group = 'CellType', markers = AB, 
+                     var_names = var_names, slot = 'scale.data', xlab = "Cell Type",
+         ylab = "Antibody", var1order = new.order, var2order = AB.order)
+
+
+```
+
+# Statistics comparing groups
+
+
+
+```{r}
+
+# prepare a dataframe for stats
+# this function takes the annotated seurat object with all the variables already existing as metadata slots
+
+# check what meta data slots exist in your object
+colnames(seu@meta.data)
+
+
+
+```
+
+
+```{r}
+# run the function
+
+var.names <- c("Sample","DaysinCulture", "Batch", "ExDate", "Genotype", "CellType")
+
+df.for.stats <- Prep_for_stats(seu, marker_list = AB, variables = var.names, 
+                               marker_name = 'Marker')
+
+
+# save the csv for later
+# write.csv(df.for.stats, paste(output_path,"filename.csv"))
+
+head(df.for.stats)
+
+
+```
+
+
+First we have 3 variables: Experimental variable, Cell types, Markers
+We want to compare the mean expression per group:
+For all antibodies together in each cell type between a given variable (Genotype) (One way anova)
+We want to compare each antibody separately for a given variable for each cell type (two way anova)
+
+```{r}
+
+
+# one way anova (combine all antibodies)
+# two way anova variable 1 = antibody/marker variable 2 = group variable
+
+# normally runs a loop across each cell type
+# option to select to calculate for all cell types together
+
+# can run the loop across antibodies
+
+# group variables we can run: Genotype, Batch, days in culture, Experiment date
+
+# we run one-way here with different conditions
+
+# compare genotypes for each cell type
+test.stats1 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellType","Marker","Genotype","Batch"),
+                     value_col = "value",
+                     stat_type = "ANOVA", id1 = 'Genotype', 
+                     id2 = NULL, use_means = TRUE,
+                     loop_by = "CellType")
+
+# see the dataframe results
+test.stats1[['ANOVA']]
+test.stats1[['TukeyHSD']]
+
+
+
+```
+
+```{r}
+# Compare expression across cell types for each marker
+test.stats2 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellType","Marker","Genotype","Batch"),
+                     value_col = "value",
+                     stat_type = "ANOVA", id1 = 'Genotype', 
+                     id2 = NULL, use_means = TRUE,
+                     loop_by = "Marker")
+test.stats2[['TukeyHSD']]
+```
+
+```{r}
+# compare Genotypes across all cell types and markers
+test.stats3 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellType","Marker"),
+                     value_col = "value",
+                     stat_type = "ANOVA", id1 = 'Genotype', 
+                     id2 = NULL, use_means = TRUE,
+                     loop_by = 'none')
+test.stats3[['TukeyHSD']]
+```
+
+```{r}
+# compare genotype for each cell type without taking the group means and using each cell as an n (not good practice)
+test.stats4 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellType","Marker","Genotype","Batch"),
+                     value_col = "value",
+                     stat_type = "ANOVA", id1 = 'Genotype', 
+                     id2 = NULL, use_means = FALSE,
+                     loop_by = "CellType")
+
+test.stats4[[1]] # ANOVA
+
+```
+
+
+Test two way ANOVAs
+
+```{r}
+
+test.stats5 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellType","Marker","Genotype","Batch"),
+                     value_col = "value",
+                     stat_type = "ANOVA2", id1 = 'Genotype', 
+                     id2 = "Marker", use_means = TRUE,
+                     loop_by = "CellType")
+
+# see the relevant interactions Tukey's results
+
+df <- as.data.frame(test.stats5[["TukeyHSD"]][["Interactions_ Genotype"]])
+head(df)
+
+# now filter for significant differences
+
+df_sig <- df %>% filter(p.adj < 0.05)
+df_sig
+
+
+
+```
+
+
+```{r}
+test.stats6 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellType","Marker","Genotype","Batch"),
+                     value_col = "value",
+                     stat_type = "ANOVA2", id1 = 'Genotype', 
+                     id2 = "CellType", use_means = TRUE,
+                     loop_by = "Marker")
+
+
+# see the interactions Tukey's results where id1 or id2 match
+
+df <- as.data.frame(test.stats6[["TukeyHSD"]][["Interactions_ Genotype"]])
+head(df)
+
+# now filter for significant differences
+
+df_sig <- df %>% filter(p.adj < 0.05)
+df_sig
+
+df <- as.data.frame(test.stats6[["TukeyHSD"]][["Interactions_ CellType"]])
+head(df)
+# now filter for significant differences
+df_sig <- df %>% filter(p.adj < 0.05)
+df_sig
+
+
+```
+
+
+
+
+
+
+Train Random Forest model
+Requires a labelled seurat object
+More cells will give higher accuracy but increase computation time.
+Run in HPC with lots of cells
+
+
+```{r}
+
+rf <- RFM_train(seurate_object = seu, 
+                             AB_list = AB, annotations = seu$CellType,
+                      split = c(0.8,0.2),
+                      downsample = "none",
+                      seed = 222,
+                      mytry = c(1:10),
+                      maxnodes = c(12: 25),
+                      trees = c(250, 500, 1000,2000),
+                      start_node = 15)
+
+#saveRDS(rf, "trainedRFM.Rds")
+
+```
+
+
