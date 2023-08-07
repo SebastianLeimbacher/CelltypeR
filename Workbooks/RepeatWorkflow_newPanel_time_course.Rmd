@@ -300,23 +300,15 @@ reference_data2 <- read.csv(reference_path2)
 df1 <- reference_data2
 rownames(df1) <- df1$X # add row names (these are the markers)
 df1 <- df1 %>% select(-"X") # remove the column with the marker names
-df2 <- as.data.frame(t(df1)) # transpose the matrix
-df2$X <- rownames(df2) # add the cell type names as a column
 
-# check to make sure the reference matrix is correct
-dim(df2)  # should be number of cell types (11) by the markers (13) with the X column of marker names = 14
-head(df2) # cell types are columns and antibody/markers are rows
-
-input <- read.csv(paste(output_path,"df2000Timecourse4.csv", sep = ""))
-input_df <- input %>% select(c("X",AB,"Sample"))
-
-dim(input_df)
-colnames(input_df)
+# The function will only work when the markers in the test data is are the same as in the reference data
+# Both dataframes need to have the markers/antibodies as columns. 
+# 
 
 cor <- find_correlation(test = input_df, 
-                             reference = df2, 
-                             min_corr = 0.2, 
-                             min_diff = 0.05)
+                             reference = df1, 
+                             min_corr = 0.35, 
+                             min_diff = 0.01)
 
 # creates a dataframe with cor1 cor2 and predicted cell type label
 
@@ -325,8 +317,10 @@ cor <- find_correlation(test = input_df,
 Visualize the CAM results
 
 ```{r}
+#dim(cor)
+#colnames(cor)
 
-plot_corr(cor)
+plot_corr(cor, threshold = 0.35, min_cells = 100)
 
 ```
 
