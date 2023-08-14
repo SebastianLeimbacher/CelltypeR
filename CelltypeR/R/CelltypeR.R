@@ -971,9 +971,9 @@ plot_corr <- function(df, threshold = 0, min_cells = 100) {
     geom_hline(yintercept = threshold) +
     guides(fill = guide_legend(title = "Cell Type"))
 
-
-
   df.melt <- melt(df) #reformat to long df
+  # melt from reshape2 will depreciate
+  #df.melt <- pivot_longer(cor1, cols = "cor.1" )
 
   # plot the best and second best correlation together
   plot3 <-
@@ -1050,17 +1050,19 @@ plot_corr <- function(df, threshold = 0, min_cells = 100) {
 #'Requires a Seurat object for the labels to be predicted. AB_list is the list of markers(antibodies)
 #'or selected features(genes) to input into the training model. An annotated Seurat object of matching
 #'data is required. The location of the annotations metadata needs to be designated:
-#'annotated_seurat_object$MetadataAnnotations_slot. The training data in the annotated Seurat object
-#'needs to be split.  If the number of cells is high the function may not run.  If this is the case
+#'annotated_seurat_object$MetadataAnnotations_slot. If the number of cells is high the function may not run.  If this is the case
 #'use downsample to reduce the number of cells.  The starting data will be randomly selected from to
-#'reduce the total size. This data will then be split in the defined ratio of training to test data.
+#'reduce the total size. This data will then be split in 80/20 training to test data.
 #'A random seed can be set to repeat the training with different random starts and random splitting of
 #'data. The tuning parameters for the random forst model can be optomized. The best values are
-#'selected for the final model from mytry, maxnodes, trees, and start_node.
-#'mtry: number of features to draw at once
+#'selected for the final model from mytry, maxnodes, trees
+#'mtry: number of features to draw at once.
 #'maxnodes: the terminal number of nodes trees in the forest can have.
-#'trees: the number of trees to be made.
-#'start_node: number of starting nodes in the trees.
+#'num_folds is for cross validation to avoid overfitting. The validation data is split from within the training data.
+#'Markers is the vector of the markers to select features from. If a RFM is need with only some of
+#'the markers in a reference data set selecting only those markers can be done with this argument.
+# after the best conditions are selected using the parameter search and cross validation these are used on the full training data.
+# cores_to_use is for parallel processing. Make sure not to exceed the number of cores you have available.
 
 #' @export
 #' @import data.table randomForest caret
@@ -1069,15 +1071,15 @@ plot_corr <- function(df, threshold = 0, min_cells = 100) {
 #' @importFrom doParallel registerDoParallel stopImplicitCluster
 #' @import foreach
 RFM_train <- function(seurate_object,
-                          markers, annotations = seu$CellTypes,
-                          split = c(0.5, 0.5),
-                          downsample = 'none',
-                          seed = 222,
-                          mytry = c(6:12),
-                          maxnodes = c(12:25),
-                          trees = c(250, 500, 1000, 2000),
-                          start_node = 12,
-                          cores_to_use = 4) {
+                       markers,
+                       annotations = seu$CellTypes,
+                       num_folds = 3,
+                       downsample = 'none',
+                       seed = 222,
+                       mytry = c(6:9),
+                       maxnodes = c(12:15),
+                       trees = c(1000, 1500),
+                       cores_to_use = 4) {
 
   seu <- seurate_object
   all_features <- seu@assays[["RNA"]]@counts@Dimnames[[1]]
@@ -1091,11 +1093,15 @@ RFM_train <- function(seurate_object,
   } else {
     df1 <- as.data.frame(sample_n(df.l, downsample))
   }
+
   set.seed(seed)
-  ind <- sample(2, nrow(df1), replace = TRUE, prob = split)
-  train <- na.omit(df1[ind == 1,])
-  test <- na.omit(df1[ind == 2,])
-  trControl <- trainControl(method = "cv", number = 10, search = "grid")
+
+  # Split data into training (80%) and test (20%) sets
+  sample_indices <- sample(nrow(df1), size = round(0.8 * nrow(df1)))
+  train <- df1[sample_indices, ]
+  test <- df1[-sample_indices, ]
+
+  trControl <- trainControl(method = "cv", number = num_folds, search = "grid")
 
   # Searching for the best mytry and maxnode
   registerDoParallel(cores = cores_to_use)
@@ -1140,7 +1146,6 @@ RFM_train <- function(seurate_object,
 
   print(paste("Best parameter mytry", best_mytry, "and max node", best_maxnode, "and tree number", best_tree, "."))
 
-
   final_rf <- randomForest(labels ~ .,
                            data = train,
                            mtry = best_mytry,
@@ -1157,6 +1162,7 @@ RFM_train <- function(seurate_object,
 
   return(final_rf)
 }
+
 
 ##############################################################################################
 
@@ -1197,16 +1203,19 @@ RFM_predict <- function(seu, rf, markers){
 #'Seurat object as 'seu.pred'.
 #' @export
 #' @importFrom Seurat AddMetaData FindTransferAnchors TransferData
-seurat_predict <- function(seu.q, seu.r, ref_id = 'Labels', down.sample = 500, markers){
+seurat_predict <- function(seu.q, seu.r, ref_id = 'labels', refdata = seu.r$labels,
+                           down.sample = 500, markers){
   Idents(seu.r) <- ref_id
   seu.r <- subset(seu.r, downsample = down.sample)
   # find anchors
   anchors <- FindTransferAnchors(reference = seu.r,
                                  query = seu.q, features = markers,
                                  reference.reduction = "pca",
-                                 dim= 1:10)
-  predictions <- TransferData(anchorset = anchors, refdata = seu.r$subgroups, dims = 1:10)
-  seu.q <- AddMetaData(seu.q, metadata = predictions$predicted.id, col.name = 'seu.pred')
+                                 dim= 1:length(markers))
+  predictions <- TransferData(anchorset = anchors, refdata = refdata,
+                              dims = 1:length(markers))
+  seu.q <- AddMetaData(seu.q, metadata = predictions$predicted.id,
+                       col.name = 'seu.pred')
 
 }
 
@@ -1459,8 +1468,11 @@ plotproportions <- function(seu, var.list, xgroup, varnames, my_colours = 'defau
 #'Example :plotproportions(seu.q, var.list = var.list, xgroup = seu.q$cell.types, varnames = varnames)
 
 #' @export
+#' @import data.table
 plotmean <- function(plot_type = 'heatmap',seu, group, markers, var_names, slot = 'scale.data',
-                     xlab = 'Cell Types', ylab = 'Antibodies', var1order, var2order){
+                     xlab = 'Cell Types', ylab = 'Markers',
+                     cluster_order, marker_order, low_colour = "lightgrey",
+                     high_colour = "blue"){
   express.by.cluster <- as.data.frame(AverageExpression(seu, features = markers,
                                                         group.by = group, slot = 'scale.data'))
   express.by.cluster <- as.data.frame(scale(express.by.cluster))
@@ -1472,35 +1484,31 @@ plotmean <- function(plot_type = 'heatmap',seu, group, markers, var_names, slot 
   colnames(express.by.cluster) <- col.names
   AB <- row.names(express.by.cluster)
   ex.data <- cbind(AB,express.by.cluster)
-  # must make a data table because melt is
   dt <- data.table(ex.data)
-  dt.long<- melt(dt, id.vars = "AB")
-  # select dot plot or heat map
-  if(plot_type == 'heatmap'){
-    # Heat map
-    print(ggplot(dt.long, aes(x = variable, y = AB)) +
-            geom_raster(aes(fill=value)) +
-            scale_fill_gradient(low="blue", high="pink", na.value = "grey") +
-            labs(x=xlab, y= ylab) +
-            theme_bw() + theme(axis.text.x=element_text(size=12, angle=90, hjust=0.95,vjust=0.2),
-                               axis.text.y=element_text(size=12),
-                               plot.title=element_text(size=12)))
-  } else if(plot_type== 'dotplot'){
+  dt.long <- melt(dt, id.vars = "AB")
+
+  if (plot_type == 'heatmap') {
+    print(ggplot(dt.long, aes(x = factor(variable, levels = cluster_order),
+                              y = factor(AB, levels = marker_order))) +
+            geom_raster(aes(fill = value)) +
+            scale_fill_gradient(low = low_colour, high = high_colour, na.value = "grey") +
+            labs(x = xlab, y = ylab) +
+            theme_bw() + theme(axis.text.x = element_text(size = 12, angle = 90, hjust = 0.95, vjust = 0.2),
+                               axis.text.y = element_text(size = 12),
+                               plot.title = element_text(size = 12)))
+  } else if (plot_type == 'dotplot') {
     a <- DotPlot(seu, features = AB, group.by = group)
     pct.exp <- as.data.frame(a$data) %>% select(features.plot, id, pct.exp)
-    # add the mean expression and percent cells
-    # rename columns to match
-    colnames(dt.long) <- c("Markers","id","expression")
-    colnames(pct.exp) <- c("Markers","id","proportion")
+    colnames(dt.long) <- c("Markers", "id", "expression")
+    colnames(pct.exp) <- c("Markers", "id", "proportion")
     df.exp.pct <- merge(dt.long, pct.exp, by = c("Markers", "id"))
-    data <- df.exp.pct %>% mutate(Cell.type = factor(id, levels = var1order))
-    data <- data %>% mutate(Marker = factor(Markers, levels = var2order))
+    data <- df.exp.pct %>% mutate(Cell.type = factor(id, levels = cluster_order))
+    data <- data %>% mutate(Marker = factor(Markers, levels = marker_order))
     print(ggplot(data = data, aes(x = Marker, y = Cell.type, color = expression, size = proportion)) +
             geom_point() +
-            scale_color_gradient(low = "grey", high = "blue") + ylab("Cell Phenotypes")
-          + xlab("Antibodies") + RotatedAxis())
-  }
-  else {
+            scale_color_gradient(low = "grey", high = "blue") +
+            ylab("Cell Phenotypes") + xlab("Antibodies") + RotatedAxis())
+  } else {
     print("not a valid plotting option")
   }
 }
