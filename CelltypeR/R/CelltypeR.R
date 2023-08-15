@@ -1461,17 +1461,17 @@ plotproportions <- function(seu, var.list, xgroup, varnames, my_colours = 'defau
 #'
 #'This function takes a Seurat object and creates a heatmap or dotplot.
 #'This function takes a Seurat object and a list of variables to plot. One
-#'bar chart is created for each variable in the list.
-#'var.list is a list defining seurat metadata slots
-#'xgroup is the cell types or x axis grouping variable
-#'varnames is a character vector of labels for the x axis of the plots
-#'Example :plotproportions(seu.q, var.list = var.list, xgroup = seu.q$cell.types, varnames = varnames)
+#'var_names is a vector with the levels of the seurat groups to be plotted
+#'group is the cell types or x axis grouping variable
+#'cluster_order is a character vector that can be used to reorder cell type annotations
+#'marker_order is the order to plot the markers
+
 
 #' @export
 #' @import data.table
 plotmean <- function(plot_type = 'heatmap',seu, group, markers, var_names, slot = 'scale.data',
                      xlab = 'Cell Types', ylab = 'Markers',
-                     cluster_order, marker_order, low_colour = "lightgrey",
+                     cluster_order=NULL, marker_order=NULL, low_colour = "lightgrey",
                      high_colour = "blue"){
   express.by.cluster <- as.data.frame(AverageExpression(seu, features = markers,
                                                         group.by = group, slot = 'scale.data'))
@@ -1481,6 +1481,13 @@ plotmean <- function(plot_type = 'heatmap',seu, group, markers, var_names, slot 
   }else{
     col.names <- colnames(express.by.cluster)
   }
+  # Check if cluster_order is NULL and set it to var_names if it is
+  if (is.null(cluster_order)) {
+    cluster_order <- var_names
+  }
+  if (is.null(marker_order)) {
+    marker_order <- markers
+  }
   colnames(express.by.cluster) <- col.names
   AB <- row.names(express.by.cluster)
   ex.data <- cbind(AB,express.by.cluster)
@@ -1488,6 +1495,7 @@ plotmean <- function(plot_type = 'heatmap',seu, group, markers, var_names, slot 
   dt.long <- melt(dt, id.vars = "AB")
 
   if (plot_type == 'heatmap') {
+
     print(ggplot(dt.long, aes(x = factor(variable, levels = cluster_order),
                               y = factor(AB, levels = marker_order))) +
             geom_raster(aes(fill = value)) +
