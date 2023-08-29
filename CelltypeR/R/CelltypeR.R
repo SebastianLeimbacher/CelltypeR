@@ -1175,10 +1175,9 @@ RFM_train <- function(seurate_object,
 
 #' @export
 #' @importFrom stats predict
-RFM_predict <- function(seu, rf, markers){
+RFM_predict <- function(seu, rf){
   # prepare a data object to be test data
   df <- t(as.data.frame(GetAssayData(seu,slot = 'scale.data')))
-  colnames(df) <- markers
   # run the predictions
   rfm.pred <- as.data.frame(predict(rf,df))
   colnames(rfm.pred) <- "Prediction"
@@ -1204,7 +1203,7 @@ RFM_predict <- function(seu, rf, markers){
 #' @export
 #' @importFrom Seurat AddMetaData FindTransferAnchors TransferData
 seurat_predict <- function(seu.q, seu.r, ref_id = 'labels', refdata = seu.r$labels,
-                           down.sample = 500, markers){
+                           down.sample = 500, markers, kw = 50){
   Idents(seu.r) <- ref_id
   seu.r <- subset(seu.r, downsample = down.sample)
   # find anchors
@@ -1212,8 +1211,14 @@ seurat_predict <- function(seu.q, seu.r, ref_id = 'labels', refdata = seu.r$labe
                                  query = seu.q, features = markers,
                                  reference.reduction = "pca",
                                  dim= 1:length(markers))
+  n_anchors <- dim(as.data.frame(anchors@anchors))[1]
+  if(n_anchors < kw){
+    kw <- n_anchors-1
+  }else{
+    kw = kw
+  }
   predictions <- TransferData(anchorset = anchors, refdata = refdata,
-                              dims = 1:length(markers))
+                              dims = 1:length(markers), k.weight = kw)
   seu.q <- AddMetaData(seu.q, metadata = predictions$predicted.id,
                        col.name = 'seu.pred')
 
@@ -1311,11 +1316,6 @@ get_annotation <- function(seu, seu.cluster, seu.label, top_n = 3,
     print("filtering")
     t.lab.known <- t.lables %>% dplyr::filter(!(Label %in% filter_out))
     top.lab <- t.lab.known  %>% group_by(Cluster) %>% top_n(1, Freq)
-    #top.lab <- t.lab.known %>%
-    #  group_by(Cluster) %>%
-    #  mutate(rank = dense_rank(desc(Freq))) %>%
-    # filter(rank == 1) %>%
-    #  select(-rank)
     sort.tops <- top.lab %>% as.data.frame() %>% arrange(desc(Freq))  %>% arrange(Cluster)
   }
   ann.df <- sort.tops %>% select(-"Freq")
@@ -1407,6 +1407,43 @@ annotate <- function(seu, annotations, to_label, annotation_name = "CellType"){
 
 }
 
+####### function to make a table with the most frequent cell type per cluster
+#' This function takes in a list of annotation data frames
+#' The outputs of get_annotations or a manually created data frame
+#' The colnames must be "Cluster" and a different column name for the prediction method.
+#' @export
+#' @import dplyr
+#' @importFrom dplyr select
+annotate_df <- function(ann.list){
+  # not all annotations methods will always present
+  # easiest to make the input a list
+  df.merge <- Reduce(function(x,y) merge(x,y, by="Cluster", all = TRUE),
+                     ann.list)
+  # convert all to lowercase
+  df2 <- lapply(df.merge, function(x) {tolower(as.character(x))})
+  # back into a dataframe
+  df3 <- as.data.frame(do.call(cbind, df2))
+  df3$consensus <- apply(df3[, -1], 1, function(row) {
+    if (is.data.frame(row)) {
+      word_counts <- table(unlist(row))
+    } else if (is.matrix(row)) {
+      word_counts <- table(unlist(row))
+    } else {
+      word_counts <- table(unlist(c(row)))
+    }
+    names(word_counts)[which.max(word_counts)]
+  })
+  # now reorder by cluster number
+  df3$Cluster <- as.integer(as.character(df3$Cluster))
+  dfsort <- df3  %>% arrange(Cluster)
+  # get a vector
+
+  #dfcon <- dfsort %>% dplyr::select("Cluster","consensus")
+  return(dfsort)
+}
+
+
+
 
 ######### functions to compare groups in an annotated seurat object ################
 
@@ -1437,7 +1474,8 @@ proportionplots <- function(seu, seu.var, seu.lable, groups = "Sample", my_colou
     print("Custome colours used.")
     print(ggplot(sample.lables, aes(x = seu.var,y=Freq ,fill = seu.lable)) +
             geom_bar(position= "fill", stat = "identity") +
-            scale_y_continuous(labels = scales::percent_format()) +
+            scale_y_continuous(labels = scales::percent_format(),
+                               expand = c(0,0)) +
             scale_fill_manual(values = my_colours)+
             theme_classic() +
             theme(text = element_text(size=15),
@@ -1446,6 +1484,7 @@ proportionplots <- function(seu, seu.var, seu.lable, groups = "Sample", my_colou
   }
 
 }
+
 
 # function called above
 
@@ -1471,8 +1510,8 @@ plotproportions <- function(seu, var.list, xgroup, varnames, my_colours = 'defau
 #' @import data.table
 plotmean <- function(plot_type = 'heatmap',seu, group, markers, var_names, slot = 'scale.data',
                      xlab = 'Cell Types', ylab = 'Markers',
-                     cluster_order=NULL, marker_order=NULL, low_colour = "lightgrey",
-                     high_colour = "blue"){
+                     cluster_order=NULL, marker_order=NULL, low_colour = "grey",
+                     mid_colour = "white", high_colour = "red"){
   express.by.cluster <- as.data.frame(AverageExpression(seu, features = markers,
                                                         group.by = group, slot = 'scale.data'))
   express.by.cluster <- as.data.frame(scale(express.by.cluster))
@@ -1499,7 +1538,8 @@ plotmean <- function(plot_type = 'heatmap',seu, group, markers, var_names, slot 
     print(ggplot(dt.long, aes(x = factor(variable, levels = cluster_order),
                               y = factor(AB, levels = marker_order))) +
             geom_raster(aes(fill = value)) +
-            scale_fill_gradient(low = low_colour, high = high_colour, na.value = "grey") +
+            scale_fill_gradient2(low = low_colour, mid = mid_colour,
+                                 high = high_colour, na.value = "grey") +
             labs(x = xlab, y = ylab) +
             theme_bw() + theme(axis.text.x = element_text(size = 12, angle = 90, hjust = 0.95, vjust = 0.2),
                                axis.text.y = element_text(size = 12),
@@ -1514,8 +1554,13 @@ plotmean <- function(plot_type = 'heatmap',seu, group, markers, var_names, slot 
     data <- data %>% mutate(Marker = factor(Markers, levels = marker_order))
     print(ggplot(data = data, aes(x = Marker, y = Cell.type, color = expression, size = proportion)) +
             geom_point() +
-            scale_color_gradient(low = "grey", high = "blue") +
-            ylab("Cell Phenotypes") + xlab("Antibodies") + RotatedAxis())
+            scale_color_gradient2(low = low_colour, mid = mid_colour, high = high_colour) +
+            ylab(ylab) + xlab(xlab) + RotatedAxis() +
+            theme_classic() +
+            theme(axis.text.x = element_text(size = 12, angle = 90, hjust = 0.95, vjust = 0.2),
+                  axis.text.y = element_text(size = 12),
+                  plot.title = element_text(size = 12))
+            )
   } else {
     print("not a valid plotting option")
   }
@@ -1590,10 +1635,10 @@ run_stats <- function(input_df, group_cols = c("Sample", "CellType", "Marker"),
 
   if (stat_type == "ANOVA") {
     if (loop_by == "CellType") {
-      var_list <- unique(df_means$CellType)
+      var_list <- unique(df_means$Celltype)
       # to store outputs and format in a readable way
       for (i in var_list) {
-        df <- df_means %>% filter(CellType == i)
+        df <- df_means %>% filter(loop_by == i)
         one_way <- aov(expression ~ df[[id1]], data = df)
         output <- summary(one_way)
         aov.l[[as.character(i)]] <- output # Append output to list

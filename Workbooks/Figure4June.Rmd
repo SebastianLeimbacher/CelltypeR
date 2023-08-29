@@ -3,13 +3,11 @@ title: "R Notebook"
 output: html_notebook
 ---
 
-Annotate the full 9MBO dataset
-1. Use Random Forest Model (RFM) - train model from Annotated hMO subset
-2. Correlation assignment model (CAM)  - run correlation 
-3. Use Seurat label transfer        - transfer labels from annotated hMO subset
+Figure 4: Visualization of annotated data from the full data set of 9 hMOs.
+UMAP of cell type annotations
+UMAP split by iPSC line (genetic background)
 
-For each prediction method visualize on UMAP and get frequency of cell type predictions per cluster (bar chart and df)
-
+The data is prepared in "hMO_3genotypeAllCells.R"
 
 ```{r}
 # load libraries
@@ -18,8 +16,9 @@ library(Seurat)
 library(dplyr)
 library(ggplot2)
 library(reshape2)
-library(randomForest)
+library(CelltypeR)
 library(scProportionTest)
+
 
 ```
 
@@ -29,7 +28,7 @@ library(scProportionTest)
 # output path for data objects
 outpath <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/PaperFigures/"
 # output path for figures
-output_path <- "/Users/rhalenathomas/Documents/Projects_Papers/PhenoID/ForFigures/"
+output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/TimeCourseAIW/Analysis/Figure4/"
 # read in files needed:
 # data object with clustering done ready to label
 seu.q <- readRDS(paste(outpath,"All9MOannaote.12072022.Rds",sep=""))
@@ -40,22 +39,25 @@ seu.r <-readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analy
 AB <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
 
 
+```
 
+```{r}
+colnames(seu.q@meta.data)
 ```
 
 
-```{r}
-DimPlot(seu.q, raster = TRUE, group.by = "labels4")
-#DimPlot(seu.r)
+
+UMAP of labelled cell types
+
+```{r, fig.width=4}
+DimPlot(seu.q, raster = TRUE, group.by = "labels4", label = TRUE,label.size = 6)
+
 
 ```
 Temp: remove excess metadata
 
 ```{r}
 
-colnames(seu.q@meta.data)
-
-seurat_obj <- seu.q
 # Define the metadata columns you want to keep
 metadata_to_keep <- c("orig.ident","nCount_RNA","nFeature_RNA","Batch",
                       "age","ipsc", "gating.groups1","Ex.date","RNA_snn_res.0.25",
@@ -64,8 +66,8 @@ metadata_to_keep <- c("orig.ident","nCount_RNA","nFeature_RNA","Batch",
                       "labels.main","labels4")
 
 # Update the Seurat object to keep only the desired metadata columns
-seurat_obj@meta.data <- seurat_obj@meta.data[, metadata_to_keep]
-colnames(seurat_obj@meta.data)
+seu.q@meta.data <- seu.q@meta.data[, metadata_to_keep]
+colnames(seu.q@meta.data)
 
 
 
@@ -80,15 +82,21 @@ Random Forest Classifier
 # read in the saved model
 rf <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/June9MBOsub_trainedRFM.Rds")
 
-# run the model to predict cell types in the unlabeled full hMO dataset
-# need to prepare the full dataset in a way to be read by RFM
-df <- transpose(as.data.frame(GetAssayData(seu.q,slot = 'scale.data')))
-dim(df)
-colnames(df) <- AB
-rfm.pred <- predict(rf,df)
+# test random forest function takes in the seurat object to have cells predicted and the trained model.  Must be trained with the same antibodies
+
+# check on RFM 
+seu.r$labels
+Idents(seu.r) <- "labels"
+rfm.pred.ref <- RFM_predict(seu.r, rf, markers)
+head(rfm.pred.ref)
+
+rfm.pred <- RFM_predict(seu.q, rf)
 head(rfm.pred)
-results.df <- as.data.frame(rfm.pred)
-head(results.df)
+
+seu.r <- AddMetaData(object=seu.r, metadata=rfm.pred.ref$`predict(rf, df)`, col.name = 'rfm.labels')
+
+# check that the data is added 
+table(seu.r$rfm.labels,seu.r$labels)
 
 # save the results
 write.csv(results.df, paste(outpath, "RFMpredictionsAllcells.28072023.csv"))

@@ -299,11 +299,6 @@ plot2
 
 ```
 
-
-
-
-
-
 Figure 3 clustering
 
 This is with the subsample of 9000 cells per hMO
@@ -456,7 +451,6 @@ for (i in AB) {
 
 ```{r}
 
-
 # annotate cells 
 Idents(seu) <- "RNA_snn_res.0.7"
 cluster.ids <- c("Unassigned","Glial-lineage","Neurons 1","Radial Glia 1",
@@ -467,14 +461,11 @@ cluster.ids <- c("Unassigned","Glial-lineage","Neurons 1","Radial Glia 1",
                  "Endothelial","Oligodendrocytes","OPC","Stem cell like",
                  "NPC")
 
-names(cluster.ids) <- levels(seu)
-seu <- RenameIdents(seu, cluster.ids)
-seu$labels <- Idents(seu)
+seu <- annotate(seu, annotations = cluster.ids, to_label = "RNA_snn_res.0.7",
+                annotation_name = "labels"
+                )
 
-DimPlot(seu, label = TRUE)
-# with more subgroups
-Idents(seu) <- "labels"
-levels(seu)
+
 
 # there are 16 levels in the cell type annotations with major groups
 
@@ -482,32 +473,31 @@ levels(seu)
 cell.type.order <- c("Astrocytes 1", "Astrocytes 2","Radial Glia 1","Radial Glia 2",
                      "Radial Glia 3","Glial-lineage",
                      "Epithelial","Endothelial",
-                     "NPC","Neurons 1","Neurons 2",
+                     "Neurons 1","Neurons 2","NPC",
                      "Oligodendrocytes","OPC","Stem cell like","Unassigned")
-cell.type.order <- rev(cell.type.order)
+#cell.type.order <- rev(cell.type.order)
 
 # colour order to match cell type order
-clust.colours <- c("chocolate2","darkorange","pink","coral1","lightpink3",
+clust.colours <- c("chocolate2","darkorange","pink","plum1","lightpink3",
                    "mistyrose2",
                    "steelblue3","deepskyblue",
                    "mediumpurple1","purple","plum3",
                    "seagreen3","olivedrab4","tomato3","burlywood3")
                    
-                   
- #                  "plum1","purple","magenta3","mediumpurple1","darkorchid","plum3",
-#             "steelblue3","darkorange1","orange1","lightcoral","coral1","orangered1","lightsalmon",
- #            "cyan")
 
 # Figure 3D UMAP with annotated clusters
 # use PDF for figure for correct resolution
-pdf(paste(fig_outs,"UMAPlabelled9000.noraster.pdf"),width = 9, height = 5)
- DimPlot(seu, order = cell.type.order, cols = clust.colours, shuffle = TRUE, raster=FALSE,pt.size = 0.1, label = FALSE) +
+
+setwd("~/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure3/")
+
+pdf("UMAPlabelled9000.noraster.pdf",width = 9, height = 5)
+ DimPlot(seu, order = rev(cell.type.order), cols = clust.colours, shuffle = TRUE, raster=FALSE,pt.size = 0.1, label = FALSE) +
    theme(legend.text = element_text(size=16), axis.title.y = element_text(size=16), 
          axis.title.x = element_text(size=16), axis.text.y = element_text(size =16),
         axis.text.x = element_text(size =16))
- dev.off()
+dev.off()
 
-DimPlot(seu, order = cell.type.order, cols = clust.colours, shuffle = TRUE, raster=FALSE,pt.size = 0.1, label = TRUE)
+
 
 ######## figure 3E heatmap of the 
 
@@ -515,10 +505,10 @@ DimPlot(seu, order = cell.type.order, cols = clust.colours, shuffle = TRUE, rast
 levels(seu) <- c("Astrocytes 1", "Astrocytes 2","Radial Glia 1","Radial Glia 2",
                      "Radial Glia 3","Glial-lineage",
                      "Epithelial","Endothelial",
-                     "NPC","Neurons 1","Neurons 2",
+                     "Neurons 1","Neurons 2","NPC",
                      "Oligodendrocytes","OPC","Stem cell like","Unassigned")
 
-pdf(paste(fig_outs,"HM9000_fig3E.pdf"),width = 8.5, height = 5)
+pdf("HM9000_fig3E.pdf",width = 8.5, height = 5)
 DoHeatmap(seu, features = AB, size= 6,slot = "scale.data", group.colors = clust.colours, disp.max = 2, disp.min = -1.5,
           angle = 90) + scale_fill_gradientn(colors = c("#154c79", "#eeeee4", "#e28743")) + 
   theme(axis.text.y = element_text(size = 15))
@@ -543,31 +533,128 @@ colnames(seu@meta.data)
 DimPlot(seu, group.by = "labels")
 
 ```
+
+
+
+
+Train a Random Forest classifier 
+
+Using too few features (mytry), too low of starting nodes (tree complexity), too few nodes (max nodes) and too few trees can all lead to over fitting.  The num_folds variable provides a cross validation within the parameter search to help avoid overfitting. 
+
 ```{r}
 
+# 
 markers <- rev(c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4"))
-
 # mytry is for the number of features to be tested as input
-# here we have a max of 13
-rf <- RFM_train(seurate_object = seu.r, 
-                             AB_list = markers, annotations = seu.r$labels,
-                      split = c(0.8,0.2),
-                      downsample = 30000,
+# here we have a max of 13 putting all the features doesn't work to create a RFM because all the trees will be the same.
+
+# To force an assignment I am removing the "Unassigned" cells in this model.
+
+Idents(seu) <- "labels"
+#seu.sub <- subset(seu, idents = "Unassigned", invert = TRUE)
+#dim(seu.sub)
+
+# Remove the "Unassigned" level from the Idents metadata
+#Idents(seu.sub) <- Idents(seu.sub)[Idents(seu.sub) != "Unassigned"]
+# Update the labels in the subset object
+#seu.sub$labels <- Idents(seu.sub)
+
+#table(seu.sub$labels)
+
+
+seu.sub <- subset(seu, downsample = 1000)
+# we can down sample in the function but this will be random across all cell types.  Downsampling based by cell type will down sample to 1000 of each cell type or the total if there is less than 1000.  This will make the cell types more balanced
+
+rf <- RFM_train(seurate_object = seu.sub,
+                      markers, 
+                      annotations = seu.sub$labels,
+                      num_folds = 3,
+                      downsample = 'none',
                       seed = 222,
-                      mytry = c(8:13),
-                      maxnodes = c(12:25),
-                      trees = c(500,1000,2000),
-                      start_node = 12)
+                      mytry = c(6:7),
+                      maxnodes = c(15:18),
+                      trees = c(1800,2000),
+                      cores_to_use = 4)
 
 
 
 ```
 
+
+ 
+```{r}
+saveRDS(rf,"/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/RFM/MBOsub_trainedRFMnewlabelsAu17.Rds")
+```
+ 
+ 
+
+```{r}
+
+# check the predictions
+Idents(seu.r) <- "labels"
+rfm.pred.ref <- RFM_predict(seu.r, rf2, markers)
+head(rfm.pred.ref)
+unique(rfm.pred.ref)
+table(rfm.pred.ref)
+
+seu.r <- AddMetaData(object=seu.r, metadata=rfm.pred.ref$Prediction, col.name = 'rfm.labels')
+dftrue <- as.data.frame(table(as.character(seu.r$labels)))
+dfpred <- as.data.frame(table(as.character(seu.r$rfm.labels)))
+colnames(dfpred)
+df2 <- dfpred %>% 
+   add_row(Var1 = "Glial-lineage", Freq=0)
+df2
+df_merge <- merge(dftrue, df2, by = "Var1", all = TRUE)
+colnames(df_merge) <- c("Celltype","Truth","Prediction")
+df_merge$Precision <- df_merge$Prediction / df_merge$Truth
+
+# Print the result
+print(df_merge)
+
+
+# confusion matrix 
+table_by_celltype <- table(Prediction = seu.r$rfm.labels, Truth = seu.r$labels)
+df_table <- as.data.frame(table_by_celltype)
+
+
+heatmap(table_by_celltype, Rowv = NA, Colv = NA)
+
+
+```
+
+```{r}
+# check the predictions
+Idents(seu.sub) <- "labels"
+rfm.pred.ref <- RFM_predict(seu.sub, rf2, markers)
+table(rfm.pred.ref)
+seu.sub <- AddMetaData(object=seu.sub, metadata=rfm.pred.ref$Prediction, col.name = 'rfm.labels')
+dftrue <- as.data.frame(table(as.character(seu.sub$labels)))
+dfpred <- as.data.frame(table(as.character(seu.sub$rfm.labels)))
+
+df_merge <- merge(dftrue, dfpred, by = "Var1", all = TRUE)
+colnames(df_merge) <- c("Celltype","Truth","Prediction")
+df_merge$Precision <- df_merge$Prediction / df_merge$Truth
+
+# Print the result
+print(df_merge)
+
+
+# confusion matrix 
+table_by_celltype <- table(Prediction = seu.sub$rfm.labels, Truth = seu.sub$labels)
+df_table <- as.data.frame(table_by_celltype)
+
+heatmap(table_by_celltype, Rowv = NA, Colv = NA)
+
+
+```
+
+
+
 Save the model
 
 ```{r}
 
-saveRDS(rf, "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/June9MBOsub_trainedRFM.Rds")
+saveRDS(rf2, "TrainedRFMAug10_noglialineage.Rds")
 
 
 ```

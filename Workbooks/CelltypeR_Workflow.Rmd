@@ -64,8 +64,6 @@ sampleNames(flowset)
 
 # if we want to save the flowset object now we can 
 # this would be read back in with flowset 
-# 
-
 
 
 ```
@@ -75,18 +73,31 @@ Harmonize data to remove batch or technical variation
 This requires us to look and see where there are two peaks to align. We need to visualize the peaks of the transformed data before aligning.
 
 ```{r}
-
-
 # we can decided what level of processing to choose with the argument 'processing'
 # biexp only applies a biexponential transformation
 # align applies biexp transform and then aligns peaks
 # retro (default), transforms, aligns and then reverse transforms
 flowset_biexp <- harmonize(flowset, processing = 'biexp')
-# we can visualize the peaks to see where there are two peaks for alignment
 
-# we need to enter the column index for which peaks to align, the alignment for one or two peaks is not the same. 
-#plotdensity_flowset(flowset)
-#plotdensity_flowset(flowset_biexp) # to see the peaks
+```
+
+We must look to see where there are two peaks and change the numbers inside the align function arguments to fit with the correct peaks. 
+
+```{r}
+plotdensity_flowset(flowset)
+
+```
+
+
+
+```{r}
+# now to align the peaks under two peaks enter all the index values (of the graphs) with 2 peaks then the ones (all the remaining plots) will go under "one_peak".
+
+# you must have at least 1 index in "two_peaks" 
+
+# if you recieve an error it is likely because you have the wrong two peak and one peak index. 
+
+# Indexing starts at 1
 
 flowset_align <- harmonize(flowset, processing = 'align', 
                            two_peaks = c(7:20),
@@ -95,10 +106,20 @@ flowset_align <- harmonize(flowset, processing = 'align',
 flowset_retro <- harmonize(flowset, processing = 'retro', 
                            two_peaks = c(7:20),
                        one_peak = c(1:6,21), threshold = 0.01)
-### test again later without running library(flowCore)
+
+
+# now create the data frame from the flowset object using the CelltypeR function flowset_to_csv
+
 df <- flowset_to_csv(flowset_retro)
 
+# antibody markers, features in order to appear on the plots
+AB <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
 
+# if you only want the area when you select the markers the area is first in the dataframe and this will be selected.  If you want width or height a different selection would be needed. We use area in our workflow
+
+df <- df %>% select(c(AB,"Sample"))
+# you can save this df for later. 
+# write.csv(df, "pathwaytosave/filename.csv")
 
 
 ```
@@ -106,11 +127,11 @@ df <- flowset_to_csv(flowset_retro)
 Now we have made all the different processing of the fsc files.  We can visualize the intensity in cell density plots to see the alignment
 
 ```{r}
-#plotdensity_flowset(flowset)
-
+# it is not neccessary to run this code chunk.  Here we are just make a visualization
+plotdensity_flowset(flowset)
 plotdensity_flowset(flowset_biexp)
 plotdensity_flowset(flowset_align)
-#plotdensity_flowset(flowset_retro)
+plotdensity_flowset(flowset_retro)
 
 
 ```
@@ -127,7 +148,11 @@ plotdensity_flowset(flowset_align)
 
 # antibody features in order to appear on the plots
 AB <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+
+# create the seurat object
+
 seu <- make_seu(df, AB_vector = AB)
+
 
 
 ```
@@ -547,10 +572,12 @@ Get a consensus of cluster annotations, Add the annotations to the seurat object
 ann.list <- list(cor.ann,rfm.ann,seu.ann, man.ann)
 
 # annotate the seurat object
+seu <- cluster_annotate(seu, ann.list,
+                             annotation_name,
+                             to_label)
 
-seu <- cluster_annotate(seu, ann.list = ann.list, 
-                        annotation_name ="CellType", 
-                        to_label = "RNA_snn_res.1")
+ # get a table of the annotations
+an.df <- annotate_df <- function(ann.list)
 
 DimPlot(seu, group.by = "CellType")
 
@@ -704,8 +731,9 @@ colnames(seu@meta.data)
 
 
 ```{r}
-# run the function
+# run the function to prepare a dataframe for stats pulling the expression values out of the seurat object
 
+# list the metadata slot names for desired variables
 var.names <- c("Sample","DaysinCulture", "Batch", "ExDate", "Genotype", "CellType")
 
 df.for.stats <- Prep_for_stats(seu, marker_list = AB, variables = var.names, 
@@ -737,7 +765,7 @@ We want to compare each antibody separately for a given variable for each cell t
 
 # can run the loop across antibodies
 
-# group variables we can run: Genotype, Batch, days in culture, Experiment date
+# group variables we can run: Genotype, Batch, days in culture, Experiment date, treatment, etc
 
 # we run one-way here with different conditions
 

@@ -1,0 +1,668 @@
+---
+title: "Figure 2 and sup"
+output: html_notebook
+---
+
+From Seurat parameter exploration select kn =25, res =0.25
+
+```{r}
+# set up environment / load libraries
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(CelltypeR)
+#rm(list=ls())
+
+```
+
+Read in the Seurat object
+
+```{r}
+seu <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/2Dcells_surface/Figure2/FigureStuff/Flowset_SelectSeuratlabels.Rds")
+
+```
+
+Make heatmap of expression by cell type sample
+
+```{r}
+
+setwd("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/")
+# plot by batch (cell culture sample)
+AB <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+
+# this is the seurat plotting function with bar colours and scale colours assigned.
+hm <- DoHeatmap(seu, group.by = "Batch", features = AB, size= 4,slot = "scale.data", group.colors = c("dodgerblue2","bisque","seagreen3","red3","mediumpurple3"), disp.max = 2, disp.min = -1.5) + scale_fill_gradientn(colors = c("#154c79", "#eeeee4", "#e28743")) + 
+  theme(axis.text.y = element_text(size = 12))
+hm
+
+pdf("Heatmap_2DcellSamples.pdf",width =5.5, height = 4)
+hm
+dev.off()
+
+
+
+```
+
+
+UMAPS of 2D cell types
+
+```{r}
+# plot the UMAP
+setwd("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/")
+
+cell.order <- rev(c("Astrocytes","IPSC","Neurons","NPC","Oligo"))
+Idents(seu) <- "Batch"
+DimPlot(seu, repel = TRUE, label = TRUE, cols = c("dodgerblue2","bisque","seagreen3","red3","mediumpurple3"), order = cell.order, shuffle = TRUE ) 
+
+
+
+pdf("kn25UMAPcelltypes2D.pdf",width =6, height = 4)
+DimPlot(seu,label = FALSE, cols = c("dodgerblue2","bisque","seagreen3","red3","mediumpurple3"),
+        order = cell.order, shuffle = TRUE) 
+dev.off()
+
+```
+
+```{r, fig.width=8}
+DimPlot(seu, repel = TRUE, label = TRUE, order = cell.order, shuffle = TRUE, split.by = "Batch", group.by = "RNA_snn_res.0.25") 
+
+setwd("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/")
+Idents(seu) <- "RNA_snn_res.0.25"
+pdf("kn25UMAPcelltypes2DSplitBy.pdf",width =20, height = 4)
+DimPlot(seu, repel = TRUE, label = TRUE, order = cell.order, shuffle = TRUE, split.by = "Batch") 
+dev.off()
+Idents(seu) <- "Batch"
+pdf("kn25UMAPcelltypes2DSplitByCellColours.pdf",width =20, height = 4)
+DimPlot(seu, repel = TRUE, label = TRUE, order = cell.order, shuffle = TRUE, split.by = "Batch",cols = c("royalblue3","bisque3","springgreen4","red3","mediumpurple3")) 
+dev.off()
+
+
+```
+
+
+
+Cluster and Visualize the clusters
+
+```{r}
+seu <- get_clusters(seu, method = "louvain", k = 60,
+                    resolution = 0.25)
+DimPlot(seu, group.by = 'RNA_snn_res.0.25', repel = TRUE,shape.by = 'Batch', raster = FALSE, pt.size = 0.25, label = TRUE) 
+
+
+
+```
+
+```{r}
+
+setwd("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/")
+markers <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+Idents(seu) <- "RNA_snn_res.0.25"
+pdf("kn25UMAPmarkers.pdf",width =20, height = 16)
+
+FeaturePlot(seu, features =markers, min.cutoff = 'q1', max.cutoff = 'q97', label = TRUE, raster = FALSE, ncol = 4)
+dev.off()
+
+for (i in markers) {
+  print(FeaturePlot(seu, features = i, min.cutoff = 'q1', max.cutoff = 'q97', label = TRUE, raster = FALSE))
+}
+
+
+
+```
+
+```{r}
+setwd("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/")
+markers <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+Idents(seu) <- "RNA_snn_res.0.25"
+png("kn25UMAPmarkers.png",width =2000, height = 1600)
+
+FeaturePlot(seu, features =markers, min.cutoff = 'q1', max.cutoff = 'q97', label = TRUE, raster = FALSE, ncol = 4)
+dev.off()
+
+```
+
+
+
+Correlation predictions
+
+```{r}
+
+reference_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/FinalReferenceMatrix.csv"
+reference_data <- read.csv(reference_path)
+
+rownames(reference_data) <- reference_data$X
+reference_data <- reference_data %>% select(-"X")
+#
+head(reference_data)
+colnames(reference_data) <- c("Astrocytes", "Endothelial", "Epithelial", "Neurons","NPC", "OPC",  "Oligodendrocyte", "Radial Glia", "Stem Like")
+
+df_ref <- as.data.frame(t(reference_data))
+df_ref$X <- rownames(df_ref)
+
+# rows are cell types in the reference matrix and Markers are the columns
+# in the input markers are the column.  
+
+
+input_df <- read.csv("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/2Dcells_surface/preprocessing/select/2DcellsSelectflowset.csv")
+dim(input_df)
+colnames(input_df)
+class(input_df)
+
+dftest <- input_df %>% select(c("CD24","CD56","CD29","CD15",
+                                  "CD184","CD133","CD71","CD44",
+                                 "GLAST","AQP4","HepaCAM", 
+                                 "CD140a","O4","Batch"))
+
+# the reference matrix and the test matrix need to both have the Markes as column
+# the ref matrix has a column of Cell types "X"
+# the min_corr cut-off will effect the amount of assigned cells
+
+cor1 <- find_correlation(test = input_df, reference = df_ref,
+                        min_corr = 0.35, min_diff = 0.05)
+cor2 <- find_correlation(test = input_df, reference = df_ref,
+                        min_corr = 0.55, min_diff = 0.05)
+cor3 <- find_correlation(test = input_df, reference = df_ref,
+                        min_corr = 0.01, min_diff = 0.005)
+cor4 <- find_correlation(test = input_df, reference = df_ref,
+                        min_corr = 0.35, min_diff = 0.005)
+# add the correlation prediction for each cell
+# thresh 0.35
+seu <- AddMetaData(object=seu, metadata=cor1$cell.label, col.name = 'cor.labels1')
+# thresh 0.55 (p value would significant)
+seu <- AddMetaData(object=seu, metadata=cor2$cell.label, col.name = 'cor.labels2')
+# thresh 0.01 (all will pass the threshold)
+# min diff threshold very low and R will be almost identical
+seu <- AddMetaData(object=seu, metadata=cor3$cell.label, col.name = 'cor.labels3')
+seu <- AddMetaData(object=seu, metadata=cor4$cell.label, col.name = 'cor.labels4')
+
+
+```
+
+Quick check of frequency of cell types
+
+```{r}
+
+library(tidyr)
+# Create a list of your data frames (cor1, cor2, cor3, cor4)
+cor_dataframes <- list(cor1, cor2, cor3, cor4)
+
+# Initialize an empty list to store the summary data frames
+summary_dataframes <- list()
+
+# Loop through the list of data frames and create summary data frames
+for (i in 1:length(cor_dataframes)) {
+  summary_df <- cor_dataframes[[i]] %>%
+    count(cell.label)
+  
+  # Rename the count column to match the cor value
+  col_name <- paste0("cor", i)
+  colnames(summary_df)[2] <- col_name
+  
+  # Add the summary data frame to the list
+  summary_dataframes[[i]] <- summary_df
+}
+
+# Merge the summary data frames based on cell.label
+final_summary <- Reduce(function(x, y) merge(x, y, by = "cell.label", all = TRUE),
+                         summary_dataframes)
+
+# Fill NA values with 0
+final_summary[is.na(final_summary)] <- 0
+
+# Display the final summary
+print(final_summary)
+
+
+```
+
+```{r}
+#table(seu$cor.labels1)
+table(seu$cor.labels4)
+
+freq.cor4 <- as.data.frame(table(seu$cor.labels4))
+
+```
+
+
+
+
+Have a look at the correlations
+
+```{r, fig.width=10}
+Idents(seu) <- 'cor.labels'
+DimPlot(seu) # see all correlation predictions 
+# top correlations for each cluster
+cor.ann.035 <- get_annotation(seu, seu.cluster = seu$RNA_snn_res.0.25, 
+                          seu.label = seu$cor.labels, top_n = 3, 
+                          filter_out = c("Unknown","unknown","Mixed", 
+                                         "unassigned","Unassigned"), 
+                          Label = "CAM")
+
+# top 5 per groups
+t.lables <- as.data.frame(table(seu$RNA_snn_res.0.25, seu$cor.labels))
+  t.lables$Freq <- as.double(t.lables$Freq)
+  colnames(t.lables) <- c("Cluster", "Label","Freq")
+  top.labs <- t.lables  %>% group_by(Cluster) %>% top_n(5, Freq)
+  sort.tops <- top.labs %>% as.data.frame() %>% arrange(desc(Freq))  %>% arrange(Cluster)
+  print(sort.tops)
+  cor.ann.035
+
+  # make a bar chart of the cell type per cluster
+  plot_lab_clust(seu, seu$RNA_snn_res.0.25, seu$cor.labels)
+setwd("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/")
+  pdf("BarchartCorbyClusterThresh035.pdf", width = 8, height = 4)
+  plot_lab_clust(seu, seu$RNA_snn_res.0.25, seu$cor.labels)
+  DimPlot(seu)
+  dev.off()
+
+```
+
+```{r, width = 10}
+plot_lab_clust(seu, seu$Batch, seu$cor.labels)
+
+```
+
+
+```{r}
+
+seu <- annotate(seu, annotations = cor.ann.035$CAM, to_label = "RNA_snn_res.0.25",
+                annotation_name = "CAM035")
+DimPlot(seu, group.by = "CAM035", label = TRUE)
+
+```
+```{r}
+library(reshape2)
+plot_corr(cor1, threshold = 0.35, min_cells = 300)
+
+
+```
+
+```{r}
+plot_corr(cor2, threshold = 0.55, min_cells = 100) # double cell type thresh 0.05
+
+```
+
+```{r}
+plot_corr(cor3, threshold = 0.01, min_cells = 50) # double cell type thresh 0.005
+```
+
+```{r, fig.height=3}
+
+plot_corr(cor4, threshold = 0.35, min_cells = 25) # double cell type thresh 0.005
+
+setwd("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/")
+  pdf("Corplotsthresh035and005.pdf", width = 6, height = 4)
+  plot_corr(cor4, threshold = 0.35, min_cells = 25) # double cell type thresh 0.005
+  dev.off()
+
+```
+
+
+
+```{r, fig.width=10}
+Idents(seu) <- 'cor.labels4'
+library(dplyr)
+# filter cell types less than 50 cells and filter out unassigned from the 0.35 threshold with 0.005 double cell threshold
+freq.cor4 <- data.frame(table(seu$cor.labels4))
+levels(seu)
+df.ft <- freq.cor4 %>% filter(Freq < 25)
+keep <- freq.cor4 %>% filter(Freq > 25)
+# sort by frequency
+# sorted_df <- df %>% arrange(desc(Freq))
+# alphabetical
+sorted_df <- keep %>% arrange(Var1)
+cell.order <- as.character(keep$Var1)
+cell.order <- cell.order[1:18]
+
+
+#filter.out <- c(as.character(df.ft$Var1),"unassigned")
+seu.sub <- subset(seu, ident = cell.order, invert = FALSE)
+
+
+DimPlot(seu.sub, order = rev(cell.order))
+setwd("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/")
+pdf("UMAPCorlablesfiltered.pdf", width = 8, height = 4)
+DimPlot(seu.sub, order = rev(cell.order))
+dev.off()
+
+
+
+```
+
+
+```{r, fig.width=14}
+  plot_lab_clust(seu, seu$Subgroups, seu$cor.labels4,filter_out = c("unknown","Unknown","Mixed","unassigned","Unassigned"))
+setwd("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/")
+  pdf("BarchartCorbyClusterThresh035and005L.pdf", width = 16, height = 4)
+  plot_lab_clust(seu, seu$Subgroups, seu$cor.labels4,filter_out = c("unknown","Unknown","Mixed","unassigned","Unassigned"))
+  DimPlot(seu)
+  dev.off()
+
+```
+
+See the correlation predictions by cell culture type
+
+```{r, fig.width=12}
+  
+Idents(seu) <- 'cor.labels4'
+plot_lab_clust(seu, seu$Batch, seu$cor.labels4,filter_out = c("unknown","Unknown","Mixed","unassigned","Unassigned"))
+setwd("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/")
+  pdf("BarchartbyBatchThresh035and005.pdf", width = 12, height = 4)
+  plot_lab_clust(seu, seu$Batch, seu$cor.labels4,filter_out = c("unknown","Unknown","Mixed","unassigned","Unassigned"))
+  DimPlot(seu)
+  dev.off()
+
+```
+
+
+
+
+```{r}
+# check with a higher correlation threshold
+
+
+cor.ann.55 <- get_annotation(seu, seu.cluster = seu$RNA_snn_res.0.25, 
+                          seu.label = seu$cor.labels2, top_n = 3, 
+                          filter_out = c("Unknown","unknown","Mixed", 
+                                         "unassigned","Unassigned"), 
+                          Label = "CAM")
+
+t.lables <- as.data.frame(table(seu$RNA_snn_res.0.25, seu$cor.labels2))
+  t.lables$Freq <- as.double(t.lables$Freq)
+  colnames(t.lables) <- c("Cluster", "Label","Freq")
+  top.labs <- t.lables  %>% group_by(Cluster) %>% top_n(3, Freq)
+  sort.tops <- top.labs %>% as.data.frame() %>% arrange(desc(Freq))  %>% arrange(Cluster)
+  print(sort.tops)
+  cor.ann.55
+  
+  t.lables <- as.data.frame(table(seu$RNA_snn_res.0.25, seu$cor.labels))
+  t.lables$Freq <- as.double(t.lables$Freq)
+  colnames(t.lables) <- c("Cluster", "Label","Freq")
+  top.labs <- t.lables  %>% group_by(Cluster) %>% top_n(5, Freq)
+  sort.tops <- top.labs %>% as.data.frame() %>% arrange(desc(Freq))  %>% arrange(Cluster)
+  print(sort.tops)
+
+
+```
+
+Make plots from Cor4 - threshold intermediate correlation threshold > 0.35 and threshold for double cell type 0.005
+
+```{r, fig.width=10}
+
+
+
+Idents(seu) <- 'cor.labels'
+DimPlot(seu) # see all correlation predictions 
+# top correlations for each cluster
+cor.ann <- get_annotation(seu, seu.cluster = seu$RNA_snn_res.0.25, 
+                          seu.label = seu$cor.labels, top_n = 3, 
+                          filter_out = c("Unknown","unknown","Mixed", 
+                                         "unassigned","Unassigned"), 
+                          Label = "CAM")
+
+# top 5 per groups
+t.lables <- as.data.frame(table(seu$RNA_snn_res.0.25, seu$cor.labels))
+  t.lables$Freq <- as.double(t.lables$Freq)
+  colnames(t.lables) <- c("Cluster", "Label","Freq")
+  top.labs <- t.lables  %>% group_by(Cluster) %>% top_n(5, Freq)
+  sort.tops <- top.labs %>% as.data.frame() %>% arrange(desc(Freq))  %>% arrange(Cluster)
+  print(sort.tops)
+  cor.ann.035
+
+  # make a bar chart of the cell type per cluster
+  plot_lab_clust(seu, seu$RNA_snn_res.0.25, seu$cor.labels)
+setwd("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/")
+  pdf("BarchartCorbyClusterThresh035.pdf", width = 8, height = 4)
+  plot_lab_clust(seu, seu$RNA_snn_res.0.25, seu$cor.labels)
+  DimPlot(seu)
+  dev.off()
+
+```
+
+
+Assign cell types to clusters from CAM
+
+```{r, fig.width=4}
+DimPlot(seu, group.by = "RNA_snn_res.0.25", label = TRUE)
+# based on cell cultures
+clusters <- c("0-Astro","1-Mix-oligo-NPC-Neurons","2-Stem Cell",
+              "3-NPC","4-Oligodendrocytes","5-Oligodendrocytes",
+              "6-Neurons","7-NPC","8-Mix",
+              "9-Astro","10-IPSC-Neuron-boundry")
+
+CAMclusters <- c("0-Astrocytes","1-Mix-Oligo-Astro-Neurons","2-Stem Like",
+                 "3-OPC-Radial-Glia-Neurons","4-Oligo-OPC",
+                 "5-NPC-Radial-Glia","6-Neurons","7-Oligodendrocytes",
+                 "8-Astrocytes","9-Epithelial-Endothelial","10-Endothelial"
+                 )
+seu <- annotate(seu, annotations = CAMclusters, to_label = "RNA_snn_res.0.25",
+                annotation_name = "CAM")
+DimPlot(seu, group.by = "CAM", label = TRUE, repel = TRUE)
+
+
+```
+
+
+
+
+
+```{r}
+library(reshape2)
+plot_corr(cor2, threshold = 0.55, min_cells = 100)
+```
+
+
+
+
+
+
+
+
+Label clusters and plot UMAP again
+
+```{r}
+
+
+Idents(seu) <- "RNA_snn_res.0.25"
+cluster.ids <- c("Astrocytes", "Early Neurons", "Stem Cell", "NPC", "Oligo","Radial Glia","Neurons","Neural Stem","Mix-AQP4+","NPC like","Stem Cell Like")
+
+cluster.ids2 <- c("Astrocytes","Mix","Stem Cells",
+                 "NPC","Oligo",
+                 "NPC-Radial Glia",
+                 "Neurons","Radial Glia",
+                 "Astrocytes-Stem","Epithelial-Endothelial",
+                 "Endothelial")
+
+cellorder2 <- c("Astrocytes","Astrocytes-Stem",
+               "Epithelial-Endothelial","Endothelial","Mix",
+               "Neurons",
+                "NPC","NPC-Radial Glia","Oligo",
+               "Radial Glia", "Stem Cells")
+
+cellorder <- c("Astrocytes","Mix-AQP4+","Oligo",
+                "NPC","NPC like","Early Neurons","Neurons","Neural Stem",
+               "Radial Glia", "Stem Cell", "Stem Cell Like")
+
+seu <- annotate(seu, annotations = cluster.ids, 
+  to_label = 'RNA_snn_res.0.25',
+  annotation_name = "Subgroups")
+# plot the UMAP 
+Idents(seu) <- 'Subgroups'
+length(levels(seu))
+
+seu <- annotate(seu, annotations = cluster.ids2, 
+  to_label = 'RNA_snn_res.0.25',
+  annotation_name = "Subgroups2")
+# plot the UMAP 
+Idents(seu) <- 'Subgroups2'
+length(levels(seu))
+
+#UMAP
+DimPlot(seu, repel = TRUE, label = TRUE,
+        cols = c("royalblue3","tomato",
+                 "mediumpurple3",
+                 "red3","red4","seagreen3","seagreen4","turquoise4",
+                 "pink","bisque","wheat4"), order = rev(cellorder)) 
+
+#UMAP
+Idents(seu) <- 'Subgroups2'
+DimPlot(seu, repel = TRUE, label = TRUE,
+        cols = c("dodgerblue2","royalblue3",
+                 "cadetblue3","darkturquoise","wheat4",
+                 "seagreen3","red3","indianred1",
+                 "mediumpurple3","pink",
+                 "bisque"), order = rev(cellorder2), 
+        shuffle = TRUE) 
+
+setwd("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/")
+
+pdf("kn25UMAPSubgroups2Dcells.pdf",width =6, height = 4)
+DimPlot(seu, repel = TRUE, label = FALSE,
+        cols = c("dodgerblue2","royalblue3",
+                 "cadetblue3","darkturquoise","wheat4",
+                 "seagreen3","red3","indianred1",
+                 "mediumpurple3","pink",
+                 "bisque"),
+                order = rev(cellorder2), shuffle = TRUE) 
+dev.off()
+
+
+
+```
+
+
+
+```{r}
+
+saveRDS(seu, "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/2Dcells_surface/Figure2/FigureStuff/Flowset_SelectSeuratlabels.Rds")
+
+```
+
+
+Test if the file saved correctly 
+
+```{r}
+seu <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/2Dcells_surface/Figure2/FigureStuff/Flowset_SelectSeuratlabels.Rds")
+```
+
+
+
+```{r}
+markers <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+for (i in markers) {
+  print(FeaturePlot(seu, features = i, min.cutoff = 'q1', max.cutoff = 'q97', label = TRUE, raster = FALSE))
+}
+
+```
+
+
+```{r}
+Idents(seu) <- 'Lables'
+markers <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+DoHeatmap(seu, features = markers)
+
+```
+
+Mean expression per cluster
+
+```{r}
+library(data.table)
+
+cellorder <- c("Astrocytes","Mix-AQP4+","Oligo",
+                "NPC","NPC like","Early Neurons","Neurons","Neural Stem",
+               "Radial Glia", "Stem Cell", "Stem Cell Like")
+
+cellorder2 <- c("Astrocytes","Astrocytes-Stem",
+               "Epithelial-Endothelial","Endothelial","Mix",
+               "Neurons",
+                "NPC","NPC-Radial Glia","Oligo",
+               "Radial Glia", "Stem Cells")
+
+cluster.ids <- c("Astrocytes", "Early Neurons", "Stem Cell", "NPC", "Oligo","Radial Glia","Neurons","Neural Stem","Mix-AQP4+","NPC like","Stem Cell Like")
+
+cluster.ids2 <- c("Astrocytes","Mix","Stem Cells",
+                 "NPC","Oligo",
+                 "NPC-Radial Glia",
+                 "Neurons","Radial Glia",
+                 "Astrocytes-Stem","Epithelial-Endothelial",
+                 "Endothelial")
+
+
+markers <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+hm <- plotmean(plot_type = 'heatmap',seu, group = "Subgroups2", markers = markers, 
+         var_names = cluster.ids2, slot = 'scale.data',
+                     xlab = 'Cell Types', ylab = 'Markers', 
+         cluster_order = cellorder2, 
+         marker_order = rev(markers),
+         low_colour = "ivory", 
+         high_colour = "dodgerblue4")+
+  theme(panel.border = element_blank(), 
+           panel.grid = element_blank())
+hm
+
+#dp <- plotmean(plot_type = 'dotplot',seu, group = "Subgroups2", markers = markers, 
+ #        var_names = cluster.ids, slot = 'scale.data',
+ #                    xlab = 'Cell Types', ylab = 'Markers', 
+#         cluster_order = cellorder, marker_order = markers) 
+setwd("~/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission")
+getwd()
+pdf("heatmap_2DexpbySubgroup2.pdf",width = 4.5, height = 4)
+print(hm)
+dev.off()
+
+hm
+
+
+
+
+```
+
+
+
+
+```{r}
+# correlation labels from Feb 21, 2022
+
+cor.df <- read.csv("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/2Dcells_surface/correlations/corr_celltypes_2Dcells2.csv")
+
+head(cor.df)
+
+# add the labels as meta data
+
+seu <- AddMetaData(object=seu, metadata=cor.df$best.cell.type, col.name = 'celltype')
+seu <- AddMetaData(object=seu, metadata=cor.df$cell.label, col.name = 'cell.label')
+
+```
+
+
+save all the plots
+
+```{r}
+
+output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/2Dcells_surface/Figure2/FigureStuff/"
+
+pdf(paste(output_path,input_name,clust_method,"kn25res025UMAPcorcelltype.pdf",sep=""),width =8, height = 5)
+DimPlot(seu, group.by = 'celltype', repel = TRUE, label = TRUE)
+dev.off()
+
+
+pdf(paste(output_path,input_name,clust_method,"kn25res025UMAPcorcelllabel.pdf",sep=""),width =20, height = 5)
+DimPlot(seu, group.by = 'cell.label', repel = TRUE, label = TRUE)
+dev.off()
+
+
+pdf(paste(output_path,input_name,clust_method,"kn25res025UMAPcorcelltypeand2D.pdf",sep=""),width =8, height = 5)
+DimPlot(seu, group.by = 'celltype', cells.highlight = list(NPC,N,I,A,O),cols.highlight = c("cadetblue","bisque3","darkolivegreen3","darkgoldenrod3","darkblue"), label = TRUE, pt.size = 0.005, cols = "grey")
+dev.off()
+
+
+
+pdf(paste(output_path,input_name,clust_method,"kn25res025UMAPcorcelllabeland2D.pdf",sep=""),width =14, height = 6)
+DimPlot(seu, group.by = 'cell.label', cells.highlight = list(NPC,N,I,A,O),cols.highlight = c("cadetblue","bisque3","darkolivegreen3","darkgoldenrod3","darkblue"), label = TRUE, pt.size = 0.005, cols = "grey")
+dev.off()
+
+```
+
+
+
+
