@@ -753,6 +753,9 @@ get_clusters <- function(seu, method = "louvain",
                          pcdim = 1:10,
                          plots = TRUE,
                          save_plots = FALSE) {
+  # make the UMAP for all object
+  seu <- RunUMAP(seu, dims = pcdim, n.neighbors = k, min.dist = 0.4,
+                 spread = 1.5)
   if(method == "louvain"){
     seu <- FindNeighbors(seu, dims = pcdim, k.param = k, reduction = "pca")
     # must take one less than the number of antibodies
@@ -789,9 +792,6 @@ get_clusters <- function(seu, method = "louvain",
   else{
     print("select a valid clustering method: 'louvain','phenograph','flowsom' ")
   }
-  # make the UMAP for all object
-  seu <- RunUMAP(seu, dims = pcdim, n.neighbors = k, min.dist = 0.4,
-                 spread = 1.5)
   if(plots){
 
     p <- DimPlot(seu, group.by = group_name)

@@ -100,7 +100,7 @@ flowset_align <- harmonize(flowset, processing = 'align',
 flowset_retro <- harmonize(flowset, processing = 'retro', 
                            two_peaks = c(9:11,15,17:21,25:42),
                        one_peak = c(1:8,12:14,16,24,43), threshold = 0.01)
-### test again later without running library(flowCore)
+
 df <- flowset_to_csv(flowset_retro)
 
 head(df)

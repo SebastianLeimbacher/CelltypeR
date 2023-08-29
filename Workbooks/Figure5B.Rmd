@@ -18,16 +18,23 @@ Preprocessing hMO datasets.  Live single cells gated in FlowJo
 
 Read in fsc files
 
+
 ```{r}
 # input path is the pathway to the folder with the data
-flowset <- fsc_to_fs(input_path)
-# see the current sample names - these are the file names of the fsc files
-sampleNames(flowset3)
+
+input_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/GatingPlanExperiment/May10June10_livegating/"
+flowset <- fsc_to_fs(input_path, downsample = 20000)
+
+
+library(flowWorkspace)  # this library has the function "sampleNames"
+sampleNames(flowset)
 
 ```
 
 
 2. Make flowset object
+- rename for with shorter names
+- the data are from two experiments.  The May experiment has two different batches, two replicates each.  The June experiment has 1 batch and three replicates. 
 
 ```{r}
 # rename samples 
@@ -44,7 +51,11 @@ Check the data object
 ```{r}
 #### need to change this function to detect peaks or at least have the user add the column number
 ### check the density plots above to see which have peaks
+
 plotdensity_flowset(flowset)
+
+
+plotdensity_flowset(flowset_biexp)
 
 ```
 Note the ssc-h values are very different between May and June.  These value are not used in the clustering.
@@ -56,56 +67,54 @@ Note the ssc-h values are very different between May and June.  These value are 
 #### need to change this function to detect peaks or at least have the user add the column number
 ### check the density plots above to see which have peaks check in plots above
 
+
 flowset_align <- harmonize(flowset, processing = 'align', 
-                           two_peaks = c(1:3,9:length(colnames(transformed_flowset)),
-                       one_peak = c(4:8), threshold = 0.001))
+                           two_peaks = c(1),
+                       one_peak = c(2:20), threshold = 0.01)
 
 flowset_retro <- harmonize(flowset, processing = 'retro', 
-                           two_peaks = c(1:3,9:length(colnames(transformed_flowset)),
-                       one_peak = c(4:8), threshold = 0.001))
+                           two_peaks = c(1),
+                       one_peak = c(2:20), threshold = 0.01)
 
 
 ```
 
-See the transformations
+
+Create the data frame and save for later
 
 ```{r}
-plotdensity_flowset(flowset)
-plotdensity_flowset(transformed_flowset)
-plotdensity_flowset(aligned_transformed_flowset)
-
-
-```
-One sample On sample is far out of alignment in Cy5
-
-
-
-Save the flowset dataset May10
-
-```{r}
-AB <- c("AQP4", "CD24", "CD44","CD184","CD15","HepaCAM","CD29",
-                         "CD56", "O4","CD140a","CD133","GLAST","CD71")
 df <- flowset_to_csv(flowset_retro)
-df <- df %>% select(c(AB,"Sample"))
+
+head(df)
+
+write.csv(df, "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure5/FlowsetAug29.csv")
+
+
 
 ```
+
+
+
 
 
 Now create the Seurat object
 
 ```{r}
+AB <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
 
-AB <- c("AQP4", "CD24", "CD44","CD184","CD15","HepaCAM","CD29",
-                         "CD56", "O4","CD140a","CD133","GLAST","CD71")
+seu <- make_seu(df, AB_vector = AB)
 
-#seu1 <- make_seu(df1, AB_vector)
-#seu2 <- make_seu(df2, AB_vector)
+DimPlot(seu, raster = FALSE, group.by = "Sample", reduction = "pca")
+DimPlot(seu, raster = FALSE, group.by = "Sample", reduction = "umap")
 
-seu <- make_seu(df, AB)
-# object is scaled in the function
+
 
 
 ```
+
+
+
+
 
 Cluster
 
@@ -114,15 +123,26 @@ Cluster
 
 seu <- get_clusters(seu, method = "louvain",
                          df_input = df,
-                         k = 40,
-                         resolution = 1.2,
-                         plots = TRUE,
+                         k = 60,
+                         resolution = 0.8,
+                         plots = FALSE,
                          save_plots = FALSE)
 
 DimPlot(seu, raster = FALSE, group.by = "seurat_clusters", label = TRUE)
 
 
 ```
+
+
+
+```{r}
+for (i in AB) {
+  print(FeaturePlot(seu, features = i, min.cutoff = 'q1', max.cutoff = 'q97', label = TRUE, raster = FALSE))
+}
+
+```
+
+
 
 
 ```{r}
@@ -209,6 +229,8 @@ t.lables <- as.data.frame(table(seu$seurat_clusters, seu$cor.labels))
   print(sort.tops)
   
 #write.csv(sort.tops,"Cor035top5pred.csv")
+cor.pred.top5 <- read.csv("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure5/Cor035top5pred.csv")
+  
 ```
 
 ```{r}
@@ -261,6 +283,7 @@ plot_lab_clust(seu, seu$seurat_clusters, seu$rfm.pred2, filter_out = c( "Unassig
 Top 5 predictions with RFM and the top prediction per cluster
 
 ```{r}
+
 rfm.ann <- get_annotation(seu, seu.cluster = seu$seurat_clusters, 
                           seu.label = seu$rfm.pred2, top_n = 3, 
                           filter_out = c("Unknown","unknown","Mixed", 
@@ -276,16 +299,23 @@ t.lables <- as.data.frame(table(seu$seurat_clusters, seu$rfm.pred2))
   print(sort.tops)
   
 #write.csv(sort.tops,"RFMtop5pred.csv")
+  
+rfm.pred.top5 <- read.csv("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure5/RFMtop5pred.csv")
 
 ```
 
 ```{r}
 #saveRDS(seu,"/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure5/SeuNewAIW_labelled.RDS")
 
-seu <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure5/SeuNewAIW_labelled.RDS")
+#seu <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure5/SeuNewAIW_labelled.RDS")
 
 Idents(seu) <- "seurat_clusters"
-seu.sub <- subset(seu, downsample = 5000)
+
+seu.new.sub <- subset(seu, downsample = 500)
+table(seu.new.sub$seurat_clusters)
+seu.new.sub <- ScaleData(seu.new.sub, features = AB)
+DimPlot(seu.new.sub)
+
 
 ```
 
@@ -324,16 +354,18 @@ Predict with reference data
 
 
 AB <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
-seu <- seurat_predict(seu, seu.r, ref_id = 'Celltypes', 
+seu <- seurat_predict(seu.new.sub, seu.r, ref_id = 'Celltypes', 
                         refdata = seu.r$Celltypes,
                            down.sample = "none", 
                         markers = AB)
 
 
+DoHeatmap(seu.new.sub, features = AB)
+
   # find anchors
 Idents(seu.r) <- "Celltypes"
 anchors <- FindTransferAnchors(reference = seu.r,
-                                 query = seu.sub, 
+                                 query = seu.new.sub, 
                                features = AB,npcs = 12,
                                  dim= 1:12, n.trees = 25, verbose = FALSE, reduction = "cca"
                                )
@@ -353,140 +385,54 @@ seu <- AddMetaData(seu, metadata = predictions$predicted.id,
 ```
 
 
-
-
+Make a table with the top predictions per cell type from 3 prediction methods
 
 ```{r}
-
-RidgePlot(seu.r, features = "CD24", slot = 'counts', group.by = 'orig.ident', log = TRUE)
-
-RidgePlot(seu.r, features = "CD24", slot = 'scale.data', group.by = 'orig.ident', log = FALSE)
-
-RidgePlot(seu, features = "CD24", slot = 'counts', group.by = 'orig.ident', log = TRUE)
-
-RidgePlot(seu, features = "CD24", slot = 'scale.data', group.by = 'orig.ident', log = FALSE)
+an.list <- list(cor.ann, rfm.ann, seu.ann)
+df.an <- annotate_df(an.list)
+df.an
+write.csv(df.an, "annotationPredsTop1.csv")
 
 ```
 
 
-Visualization 
 
+
+
+Annotated clusters of two new AIW002-02 hMO batches
 
 ```{r}
 
-DoHeatmap(seu, group.by = 'RNA_snn_res.1.2', features = AB, size= 5,slot = "scale.data",
-        angle = 90,label = TRUE,
-        hjust = 0, group.bar.height = 0.05, disp.max = 2, disp.min = -1.5) + scale_fill_gradientn(colors = c("#154c79", "#eeeee4", "#e28743")) + 
-  theme(axis.text.y = element_text(size = 13)) 
+clust.colours <- c("chocolate2",# Astrocytes 1
+                   "darkorange", # Astrocytes 2
+                   "pink", # RG1
+                   "deeppink",# RG1a
+                   "plum1", #RG2
+                   "lightpink3",# RG3
+                   "mistyrose2", # Glia-lineage
+                   "steelblue3",# epithelial
+                   "deepskyblue", # endothelial
+                   "mediumpurple1",# neurons 1
+                   "purple",# Neurons2
+                   "plum3", # NPC
+                   "mediumslateblue", # Neural lineage
+                   "seagreen3",#Oligo
+                   "olivedrab4", # OPC
+                   "darkseagreen3",#OPC like
+                   "tomato3",# stem like
+                   "burlywood3" #extra 
+                   )
+
+
+
+
 
 ```
 
 
-Feature plots
-
-```{r}
-
-Idents(seu) <- 'RNA_snn_res.1.2'
-FeaturePlot(seu, features = AB, slot = 'scale.data',min.cutoff = 'q3', max.cutoff ='q97', ncol = 5, label = TRUE)
-
-for(A in AB){
-  print(FeaturePlot(seu, features = A, slot = 'scale.data',min.cutoff = 'q3', max.cutoff ='q97', ncol = 1, label = TRUE))
-}
-
-```
 
 
-Add cell type labels using subtypes from 9000 labels (used to train RF)
 
-
-```{r}
-
-Idents(seu) <- "RNA_snn_res.1.2"
-
-# labels with the 9000 subset subgroup labels
-cluster.ids <- c("mixed","astro1a","astro1b","astro2","RG1a",   # 0-4
-                 "Neurons2","RG2","Neurons1a","RG1c","astro1c",  #5-9
-                 "Neurons2a","stem-like", "Mixed","RG1b", "astro1d", #10-14
-                 "Neurons3a", "OPC", "astro2b","stem-like","astro1e",  #15-19
-                 "Neurons3b", "endothelial","astro1f", "Neurons2b","Neurons3b", #20-24
-                 "Neurons1b","Neurons3c","RG3","NPC","NPCb", #25-29
-                 "astro3","astro-m","epithelial","oligodendrocytes", "astro-m",
-                 "RG/astro2")
-
-names(cluster.ids) <- levels(seu)
-seu <- RenameIdents(seu, cluster.ids)
-seu$labels1 <- Idents(seu)
-
-Idents(seu) <- "RNA_snn_res.1.2"
-# combine same 
-cluster.ids <- c("Mixed","Astrocytes 1","Radial Glia 3","Astrocytes 2","Radial Glia 1",   # 0-4
-                 "Neurons 2","Radial Glia 2","Neurons 1","Radial Glia 2","Astrocytes 1",  #5-9
-                 "Neurons 2","Stem-like", "Mixed","Radial Glia 1", "Astrocytes 1", #10-14
-                 "Neurons 3", "OPC", "Astrocytes 2","Stem-like","Astrocytes 1",  #15-19
-                 "Neurons 3", "Endothelial","Astrocytes 1", "Neurons 2","Neurons 3", #20-24
-                 "Neurons 1","Neurons 3","Radial Glia 3","NPC","NPC", #25-29
-                 "Astrocytes 3","Astrocytes mature","Epithelial","Oligodendrocytes", "Astrocytes mature",
-                 "Glia")
-
-# combine same 
-names(cluster.ids) <- levels(seu)
-seu <- RenameIdents(seu, cluster.ids)
-seu$subtypes <- Idents(seu)
-DimPlot(seu, reduction = "umap", label = TRUE, group.by = 'subtypes', repel = TRUE) +
-  ggplot2::theme(legend.position = "none")
-
-DimPlot(seu, reduction = "umap", label = TRUE, group.by = 'subtypes', repel = TRUE)
-
-
-```
-
-```{r}
-
-DoHeatmap(seu, group.by = 'subtypes', features = AB, size= 5,slot = "scale.data",
-        angle = 90,label = TRUE,
-        hjust = 0, group.bar.height = 0.05, disp.max = 2, disp.min = -1.5) + scale_fill_gradientn(colors = c("#154c79", "#eeeee4", "#e28743")) + 
-  theme(axis.text.y = element_text(size = 13)) 
-
-```
-
-Labels with groups matching for proportions
-
-```{r}
-
-Idents(seu) <- "RNA_snn_res.1.2"
-
-# main group labels for proportions
-
-cluster.ids <- c("Mixed","Astrocytes 1","Radial Glia 1","Astrocytes 2","Radial Glia 1",   # 0-4
-                 "Neurons 2","Radial Glia 2","Neurons 1","Radial Glia 2","Astrocytes 1",  #5-9
-                 "Neurons 2","Stem-like", "Mixed","Radial Glia 1", "Astrocytes 1", #10-14
-                 "Neurons 1", "OPC", "Astrocytes 2","Stem-like","Astrocytes 1",  #15-19
-                 "Neurons 1", "Endothelial","Astrocytes 1", "Neurons 2","Neurons 2", #20-24
-                 "Neurons 1","Neurons 2","Radial Glia 1","NPC","NPC", #25-29
-                 "Astrocytes 1","Astrocytes 2","Epithelial","Oligodendrocytes", "Astrocytes 2",
-                 "Glia")
-
-names(cluster.ids) <- levels(seu)
-seu <- RenameIdents(seu, cluster.ids)
-seu$Cell_types <- Idents(seu)
-
-DimPlot(seu, reduction = "umap", label = TRUE, group.by = 'Cell_types', repel = TRUE) +
-  ggplot2::theme(legend.position = "none")
-
-DimPlot(seu, reduction = "umap", label = TRUE, group.by = 'Cell_types', repel = TRUE)
-
-
-DimPlot(seu, group.by = 'RNA_snn_res.1.2', label = TRUE)
-
-```
-
-
-```{r}
-
-saveRDS(seu, paste(output_path, "NewDataannaote.14122022.Rds"))
-
-
-```
 
 Heatmaps
 
@@ -539,6 +485,15 @@ DimPlot(seu, order = cell.type.order, cols = clust.colours, shuffle = TRUE, rast
 
 
 
+
+```
+
+
+
+
+# Create a seurat object with AIW002 batches from Figures 4 and the new batches
+
+```{r}
 
 ```
 
