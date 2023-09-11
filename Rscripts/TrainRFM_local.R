@@ -20,6 +20,35 @@ print(overlap)
 # Labelled data object
 require(Seurat)
 require(CelltypeR)
+
+
+#### train a RFM with the figure 3 subset of cells  #############
+
+seu.r <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Seu9000lablesJune23.RDS")
+DimPlot(seu.r, group.by = "labels", label = TRUE)
+
+markers <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+
+Idents(seu.r) <- "labels"
+seu.sub <- subset(seu.r, downsample = 1000)
+rf <- RFM_train(seurate_object = seu.sub,
+                markers = markers, 
+                annotations = seu.sub$labels,
+                num_folds = 3,
+                downsample = 8000,
+                seed = 222,
+                mytry = c(5:7),
+                maxnodes = c(20:21),
+                trees = c(1800),
+                cores_to_use = 4)
+
+
+##### save the model
+saveRDS(rf, "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Seu9000trainedSeptRFM.RDS")
+
+
+#### the full annotated data
+
 seu.r <- readRDS("~/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure4/All9MOannaoteAug.RDS")
 # check metadata to see what the cell type annotations to use
 print(colnames(seu.r@meta.data))
@@ -33,7 +62,7 @@ print(table(seu.r$Celltypes))
 Idents(seu.r) <- "Celltypes"
 seu.sub <- subset(seu.r, downsample = 3000)
 rf <- RFM_train(seurate_object = seu.sub,
-                markers = overlap, 
+                markers = markers, 
                 annotations = seu.sub$Celltypes,
                 num_folds = 3,
                 downsample = 8000,
@@ -45,6 +74,9 @@ rf <- RFM_train(seurate_object = seu.sub,
 
 # kappa on the training data is 0.83 but only 0.69 on the test data.  
 # "Best parameter mytry 4 and max node 17 and tree number 1800 ."
+
+
+
 
 # try some other conditions and include more cells
 rf2 <- RFM_train(seurate_object = seu.sub,
@@ -92,4 +124,11 @@ unique(seu.r$Celltypes)
 seu.t <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/TimeCourseAIW/Analysis/SeuratSubTimeline.RDS")
 colnames(seu.t@meta.data)
 unique(seu.t$Celltypes2)
+
+
+
+
+
+
+
 

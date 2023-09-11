@@ -45,8 +45,8 @@ All samples need to be in one folder.
 
 ```{r}
 
-input_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/FlowDataFiles/9MBO"
-output_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/testingLibrary/"
+input_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/FlowDataFiles/9MBO/"
+
 
 # 1.a Read in FlowJo Files 
 
@@ -56,8 +56,9 @@ flowset <- fsc_to_fs(input_path, downsample = 1000)
 # down sample can be a number, 'none' or 'min'
 
 # look at file names and rename with shorter sample names
-
+library(flowWorkspace)  # this library has the function "sampleNames"
 sampleNames(flowset)
+
 sampleNames(flowset) <- sampleNames(flowset) <- c("3450_0306","AIW002_0306","AJG001C_0306","3450_0317A","AIW002_0317A","AJG001C_0317A","3450_0317B","AIW002_0317B","AJG001C_0317B")
 sampleNames(flowset)
 

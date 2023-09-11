@@ -622,7 +622,7 @@ We first need to add the variables into the seurat object that we want to compar
 Idents(seu.t) <- 'Sample'
 levels(seu.t)
 
-Age <- c("150","150","150","150",
+Age <- c("155","155","155","150",
          "30","30","30","30",
          "60","60","60","60",
          "100","100","100","100")
@@ -650,7 +650,22 @@ seu$Replicate <- Idents(seu)   # add a new dataslot
 
 # change the levels in the time course so that are in the order of actual time for plotting
 
-seu.t$Days_in_FD <- factor(seu.t$Days_in_FD, levels = c("30","60","100","150"))
+
+
+# rename with exact time points
+
+Idents(seu.t) <- "Days_in_FD"
+levels(seu.t)
+days <- c("38","63","98","155")
+
+
+seu.t <- annotate(seu.t, annotations = days, to_label = "Days_in_FD", 
+                annotation_name = "Days_in_FD")
+
+seu.t$Days_in_FD <- factor(seu.t$Days_in_FD, levels = c("38","63","98","155"))
+
+Idents(seu.t) <- "Days_in_FD"
+DimPlot(seu.t)
 
 ```
 
@@ -765,6 +780,15 @@ dev.off()
 
 ```
 
+```{r}
+seu.t<- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/TimeCourseAIW/Analysis/SeuratSubTimeline.RDS")
+
+```
+
+
+
+
+
 Look at cell type proportions across time and replicates
 
 ```{r}
@@ -794,48 +818,44 @@ Another visualization over time
 df <- as.data.frame(proportions(table(seu.t$CelltypesMainNew,seu.t$Days_in_FD,seu.t$Replicate)))
 colnames(df) <- c("Celltypes","DaysFD","Replicate","Proportion")
 
+head(df)
 
-
-
-ggplot(df,
-       aes(x=DaysFD, y=Proportion, colour=Celltypes)) +
-  geom_line() + geom_point()
-
-
-mean_df <- df %>%
-  group_by(DaysFD, Celltypes) %>%
-  summarize(MeanProportion = mean(Proportion))
+df$DaysFD <- as.numeric(as.character(df$DaysFD))
 
 # Create the plot
-ggplot(df, aes(x = DaysFD, y = Proportion, color = Celltypes)) +
+ggplot(df, aes(x = DaysFD, y = Proportion *1000, color = Celltypes)) +
   geom_point() +
-  stat_summary(data = mean_df, aes(x = DaysFD, y = MeanProportion, group = Celltypes), 
-               fun = "mean", geom = "line", linetype = "dashed", size = 1) +
+  stat_summary(data = mean_df, aes(x = DaysFD, y = MeanProportion *1000, group = Celltypes), 
+               fun = "mean", geom = "line", linetype = "solid", size = 1) +
   labs(title = "Mean Proportion vs. DaysFD",
        x = "DaysFD",
-       y = "Proportion",
+       y = "Percent of total cells",
        color = "Celltypes") +
   scale_color_manual(name = "Celltypes", values = clust.colours) +
-  facet_wrap(~Celltypes, scales = "free_y")  # Split by facets
-
-
+  scale_x_discrete() + # Set x-axis limits
+  facet_wrap(~Celltypes, scales = "free_y") + # Split by facets
+   theme(strip.text.x = element_text(size =8,angle = 0, hjust = 0.5, vjust = 0, margin = margin(b = 6)))
 
 setwd("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/TimeCourseAIW/Analysis/Figure7/")
-# save the plot
-pdf("LinePlottimeCourse.pdf",width = 8, height = 6)
-ggplot(df, aes(x = DaysFD, y = Proportion, color = Celltypes)) +
+pdf("LinePlotPercentbyTime.pdf", width = 10, height = 7)
+ggplot(df, aes(x = DaysFD, y = Proportion *1000, color = Celltypes)) +
   geom_point() +
-  stat_summary(data = mean_df, aes(x = DaysFD, y = MeanProportion, group = Celltypes), 
-               fun = "mean", geom = "line", linetype = "dashed", size = 1) +
+  stat_summary(data = mean_df, aes(x = DaysFD, y = MeanProportion *1000, group = Celltypes), 
+               fun = "mean", geom = "line", linetype = "solid", size = 1) +
   labs(title = "Mean Proportion vs. DaysFD",
        x = "DaysFD",
-       y = "Proportion",
+       y = "Percent of total cells",
        color = "Celltypes") +
   scale_color_manual(name = "Celltypes", values = clust.colours) +
-  facet_wrap(~Celltypes, scales = "free_y")  # Split by facets
+  scale_x_discrete() + # Set x-axis limits
+  facet_wrap(~Celltypes, scales = "free_y") + # Split by facets
+   theme(strip.text.x = element_text(size =8,angle = 0, hjust = 0.5, vjust = 0, margin = margin(b = 6)))
 dev.off()
 
 
+unique(df$DaysFD)
+
+ 
 ```
 
 
@@ -1285,6 +1305,7 @@ VlnPlot(seu, features = c("TH","CD24"))
 
 ```{r}
 saveRDS(seu.t,"/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/TimeCourseAIW/SeuTimeCourseSub.RDS")
+
 
 ```
 

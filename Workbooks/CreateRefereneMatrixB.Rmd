@@ -608,6 +608,7 @@ heatmap(scMidStr,
 
 Developing Forebrain
 https://cells.ucsc.edu/?ds=human-forebraindev+sc-rna-seq
+Van Bruggen et al, Developmental cell 2022
 
 ```{r}
 input_path <- "/Users/rhalenathomas/Documents/Data/scRNAseq/PublicData/"
@@ -1803,6 +1804,9 @@ df <- as.data.frame(t(meanEx))
 rownames(df) <-  c("CD24","NCAM1","ITGB1","FUT4",  
                    "CXCR4","PROM1","CD44","PDGFRA","TH",
                    "ST3GAL2","ITGA6")
+
+#SSEA4 is a carbohydrate epitope of glycoproteins expressed during early development and is a marker of human embryonic stem cells. 17. The presence of SSEA4 synthase is an indicator of SSEA4 synthesis.
+# ST3GAL2 is the synthase gene
 
 head(df)
 colnames(df)

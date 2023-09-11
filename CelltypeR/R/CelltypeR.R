@@ -1203,22 +1203,27 @@ RFM_predict <- function(seu, rf){
 #' @export
 #' @importFrom Seurat AddMetaData FindTransferAnchors TransferData
 seurat_predict <- function(seu.q, seu.r, ref_id = 'labels', refdata = seu.r$labels,
-                           down.sample = 500, markers, kw = 50){
+                           down.sample = 500, markers, kw = 50, kfilter = 100){
   Idents(seu.r) <- ref_id
   seu.r <- subset(seu.r, downsample = down.sample)
   # find anchors
   anchors <- FindTransferAnchors(reference = seu.r,
                                  query = seu.q, features = markers,
                                  reference.reduction = "pca",
-                                 dim= 1:length(markers))
+                                 dim= 1:length(markers),
+                                 npcs = length(markers),
+                                 k.filter = kfilter,
+                                 max.features = length(markers))
   n_anchors <- dim(as.data.frame(anchors@anchors))[1]
-  if(n_anchors < kw){
-    kw <- n_anchors-1
-  }else{
-    kw = kw
+  # Ensure kw is always an even number
+  if(n_anchors < kw) {
+    kw <- n_anchors - 1
+    if(kw %% 2 == 0){
+      kw <- kw -1
+    }
   }
   predictions <- TransferData(anchorset = anchors, refdata = refdata,
-                              dims = 1:length(markers), k.weight = kw)
+                              dims = 1:length(markers), k.weight = kw, query = seu.q)
   seu.q <- AddMetaData(seu.q, metadata = predictions$predicted.id,
                        col.name = 'seu.pred')
 
@@ -1436,9 +1441,6 @@ annotate_df <- function(ann.list){
   # now reorder by cluster number
   df3$Cluster <- as.integer(as.character(df3$Cluster))
   dfsort <- df3  %>% arrange(Cluster)
-  # get a vector
-
-  #dfcon <- dfsort %>% dplyr::select("Cluster","consensus")
   return(dfsort)
 }
 
