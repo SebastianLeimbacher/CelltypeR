@@ -12,4 +12,5 @@ annotations. For example annotations = df$CellTypes or annotations = c("Neurons"
 "astrocytes","radial glia").The data slot to annotate must be indicated.
 To label the data slot with the consensus annotation set annotation_name.
 Default annotation_name = "CellType".
+Example: seu <- annotate(seu, annotations = df$CellTypes, to_label = seu$clusters, annotation_name = "CellTypes")
 }

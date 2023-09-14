@@ -124,11 +124,33 @@ unique(seu.r$Celltypes)
 seu.t <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/TimeCourseAIW/Analysis/SeuratSubTimeline.RDS")
 colnames(seu.t@meta.data)
 unique(seu.t$Celltypes2)
+unique(seu.t$CellTypes)
+unique(seu.t$Celltypes2)
+unique(seu.t$CelltypesNew)
+unique(seu.t$CelltypesMainNew)
+Idents(seu.t) <- "CelltypesMainNew"
+table(seu.t$CelltypesMainNew)
+seu.sub <- subset(seu.t, downsample = 500)
 
+# training without CD49f for Ghislaine's samples
 
+# try some other conditions and include more cells
+rf <- RFM_train(seurate_object = seu.sub,
+                markers = AB, 
+                annotations = seu.sub$CelltypesMainNew,
+                num_folds = 3,
+                downsample = "none",
+                seed = 222,
+                mytry = c(4:6),
+                maxnodes = c(20:22),
+                trees = c(1800,2000),
+                cores_to_use = 4)
 
+# results
 
-
-
+saveRDS(rf, "RFM_ghislainePanel.RDS")
+# training Kappa : 0.9698 
+# test Kappa : 0.917 
+# "Best parameter mytry 4 and max node 20 and tree number 1800 ."
 
 

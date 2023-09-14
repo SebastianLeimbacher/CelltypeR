@@ -193,8 +193,9 @@ combine_flowframes <- function(list_of_flowframes) {
 #' in a data frame format where cells are rows and Markers are columns.  A column indicating
 #' the starting fsc file "Sample" is required and added as meta data into the Seurat object.
 
-
 #' @export
+#' @examples
+#' make_seu(df = flow_dataframe, AB_vector = markers_names)
 #' @importFrom Seurat CreateSeuratObject AddMetaData
 #' @importFrom dplyr select
 
@@ -462,7 +463,8 @@ phenograph <- function(input,
       p4 <- DoHeatmap(input, features = rownames(input), group.by = clust_name) # heatmap
 
       # UMAP
-      p3 <- DimPlot(input, reduction = "umap", repel = TRUE, label = TRUE, group.by = clust_name)
+      p3 <- DimPlot(input, reduction = "umap", repel = TRUE,
+                    label = TRUE, group.by = clust_name, raster = FALSE)
       print(p3)
       print(p4)
 
@@ -910,10 +912,15 @@ find_correlation <- function(test,
 #' Plot correlation assignment model (CAM) results
 #'
 #' The function requires the data frame output from the find_correlation function
+#' Filter out cell type annotation with fewer than 'min_cells' for the plot
+#' The threshold with draw a line on the plot.  This can be set to the R theshold used in the find_correlation function.
 
 #' @export
+#' @examples
+#' plot_corr(cor_df, threshold = 0.3, min_cells = 300)
 #' @importFrom dplyr filter group_by select
 #' @import ggplot2 dplyr
+#' @importFrom reshape2 melt
 
 plot_corr <- function(df, threshold = 0, min_cells = 100) {
   # filter to get frequency table and save as csv

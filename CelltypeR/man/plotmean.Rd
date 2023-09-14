@@ -12,17 +12,19 @@ plotmean(
   var_names,
   slot = "scale.data",
   xlab = "Cell Types",
-  ylab = "Antibodies",
-  var1order,
-  var2order
+  ylab = "Markers",
+  cluster_order = NULL,
+  marker_order = NULL,
+  low_colour = "grey",
+  mid_colour = "white",
+  high_colour = "red"
 )
 }
 \description{
 This function takes a Seurat object and creates a heatmap or dotplot.
 This function takes a Seurat object and a list of variables to plot. One
-bar chart is created for each variable in the list.
-var.list is a list defining seurat metadata slots
-xgroup is the cell types or x axis grouping variable
-varnames is a character vector of labels for the x axis of the plots
-Example :plotproportions(seu.q, var.list = var.list, xgroup = seu.q$cell.types, varnames = varnames)
+var_names is a vector with the levels of the seurat groups to be plotted
+group is the cell types or x axis grouping variable
+cluster_order is a character vector that can be used to reorder cell type annotations
+marker_order is the order to plot the markers
 }

@@ -4,7 +4,7 @@
 \alias{RFM_predict}
 \title{Predict cell types in a Seurat object with a trained Random Forest Model}
 \usage{
-RFM_predict(seu, rf, markers)
+RFM_predict(seu, rf)
 }
 \description{
 Predict cell types in a Seurat object using a trained Random Forest Model.

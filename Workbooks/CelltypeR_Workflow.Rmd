@@ -5,9 +5,9 @@ output: html_notebook
 
 1. Data preprocessing
 a. Read FlowJo files into R.
-b. Create a data frame with intensity measurements for each marker for all          samples within the experiment to be analyzed.  
+b. Create a flow frame with intensity measurements for each marker for all          samples within the experiment to be analyzed.  
 c. Harmonize data 
-d. Create dataframe
+d. Create dataframe with intensity of expression (area) for each marker
 e. Create a Seurat object
 
 2. Cluster data
@@ -18,11 +18,17 @@ c. Create clusters with best conditions
 3. Annotate clusters with cell types.
 a. Predict cell types by correlation matrix
 b. Visualize expression by cluster for manual annotation
-c. With annotated an data set train Random Forest classifier to predict cell        types.
-d. With annotated an data set predict cell types with Seurat label transfer.
-e. For each prediction calculate the top most predicted cell per cluster and        take a consensus to annotate clusters.
+c. With annotated an data set train Random Forest classifier to predict cell        types. (will only work if you have an already labelled dataset and train the model)
+d. annotated an data set predict cell types with Seurat label transfer. (will only work if you have a reference labelled data object).
+e. For each prediction calculate the top most predicted cell per cluster and take a consensus to annotate clusters. Make a dataframe of predicted annotations. 
 f. Add cluster annotations.
 
+4. Compare groups
+a. bar charts of proportions
+b. permutations tests
+c. ANOVAs and tukey tests
+
+5.Training of random forest model.
 
 
 ```{r}
@@ -46,7 +52,7 @@ All samples need to be in one folder.
 ```{r}
 
 input_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/FlowDataFiles/9MBO/"
-
+input_path <- "/FlowDataFiles/9MBO/"
 
 # 1.a Read in FlowJo Files 
 
@@ -78,25 +84,26 @@ This requires us to look and see where there are two peaks to align. We need to 
 # biexp only applies a biexponential transformation
 # align applies biexp transform and then aligns peaks
 # retro (default), transforms, aligns and then reverse transforms
+
+plotdensity_flowset(flowset)
 flowset_biexp <- harmonize(flowset, processing = 'biexp')
 
+# we need to view the biex transform to see which measurements have two peaks
+plotdensity_flowset(flowset_biexp)
+
+
+
+
 ```
 
-We must look to see where there are two peaks and change the numbers inside the align function arguments to fit with the correct peaks. 
-
-```{r}
-plotdensity_flowset(flowset)
-
-```
-
-
+Define which meausures have one or two peaks and align peaks
 
 ```{r}
 # now to align the peaks under two peaks enter all the index values (of the graphs) with 2 peaks then the ones (all the remaining plots) will go under "one_peak".
 
 # you must have at least 1 index in "two_peaks" 
 
-# if you recieve an error it is likely because you have the wrong two peak and one peak index. 
+# if you receive an error it is likely because you have the wrong two peak and one peak index. 
 
 # Indexing starts at 1
 
@@ -116,19 +123,13 @@ df <- flowset_to_csv(flowset_retro)
 # antibody markers, features in order to appear on the plots
 AB <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
 
-# if you only want the area when you select the markers the area is first in the dataframe and this will be selected.  If you want width or height a different selection would be needed. We use area in our workflow
-
-df <- df %>% select(c(AB,"Sample"))
-# you can save this df for later. 
-# write.csv(df, "pathwaytosave/filename.csv")
-
 
 ```
 
 Now we have made all the different processing of the fsc files.  We can visualize the intensity in cell density plots to see the alignment
 
 ```{r}
-# it is not neccessary to run this code chunk.  Here we are just make a visualization
+# it is not necessary to run this code chunk.  Here we are just make a visualization
 plotdensity_flowset(flowset)
 plotdensity_flowset(flowset_biexp)
 plotdensity_flowset(flowset_align)
@@ -138,14 +139,14 @@ plotdensity_flowset(flowset_retro)
 ```
 
 
-
+Make the seurat object. 
+Note this is needed for louvain clustering using seurat however it is only for visualization for the flowsom and phenograph clustering. 
 
 ```{r}
 
-# the function make_seu will take in the df of expression and Antibody/Marker list as a vector and create a seurat object. Values are scaled. Marker expression will be in the "RNA" slot. PCA is calculated using AB vector as the features 
+# the function make_seu will take in the df of expression and Antibody/Marker list as a vector and create a seurat object. Values are scaled. Marker expression will be in the "RNA" slot. PCA is calculated using the AB vector as the features 
 
 # make sure to always keep the same antibody order or your labels will not be correct
-
 
 # antibody features in order to appear on the plots
 AB <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")

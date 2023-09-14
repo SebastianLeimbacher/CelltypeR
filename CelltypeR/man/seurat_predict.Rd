@@ -4,7 +4,16 @@
 \alias{seurat_predict}
 \title{Predict cell types in a Seurat object with Seurat label transfer}
 \usage{
-seurat_predict(seu.q, seu.r, ref_id = "Labels", down.sample = 500, markers)
+seurat_predict(
+  seu.q,
+  seu.r,
+  ref_id = "labels",
+  refdata = seu.r$labels,
+  down.sample = 500,
+  markers,
+  kw = 50,
+  kfilter = 100
+)
 }
 \description{
 Predict cell types in a Seurat object using a reference Seurat object.
