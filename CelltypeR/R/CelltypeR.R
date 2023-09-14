@@ -20,10 +20,12 @@
 #' be added from within the flow data. If only a subset of cells is desired downsampling is an option.
 
 #' @export
+#' @examples
+#' fsc_to_fs(input_folder_fsc, downsample = "none")
 #' @import flowCore
 #' @importFrom flowCore read.flowSet fsApply
 
-fsc_to_fs <- function(input_path, downsample = 'none'){
+fsc_to_fs <- function(input, downsample = 'none'){
   flowset = read.flowSet(path=input_path,transformation = FALSE ,
                          emptyValue = FALSE,truncate_max_range = FALSE,
                          package="flowCore")
@@ -55,7 +57,7 @@ fsc_to_fs <- function(input_path, downsample = 'none'){
 
 ##############################################################################################
 # harmonize
-# transform, align, retro transform flowset object and save a csv file
+# transform, align, retro transform flowset object
 
 # will be called by transform function
 inversebiexponentialTransform <- function(flowset,a = 0.5, b = 1, c = 0.5, d = 1, f = 0, w = 0){
@@ -78,12 +80,17 @@ inversebiexponentialTransform <- function(flowset,a = 0.5, b = 1, c = 0.5, d = 1
 
 #' Transform and align samples in flowset object
 #'
-#' This function to take in a folder/file path of fsc flow cytometer file selecting the FSC-A
-#' value for each channel.  Each sample file in the folder will be a slot in the flowset object.
-#' The samples will be names by the file names and can be renamed. The channel names will automatically
-#' be added from within the flow data. If only a subset of cells is desired downsampling is an option.
+#' This function to takes in the flowset object created from a fsc files and transformed the data
+#' If 'retro' (default) is selected the samples will be biexponentially transformed, aligned and then reverse transformed
+#' If 'biexp' is selected the samples will only be biexponentially transformed
+#' If 'align' is selected the samples will be transformed and aligned but not reverse transformed
+#' The two_peaks and one_peak argument refer to the biexp transformed data and are the indexes of which measures have
+#' one or two peaks. At least one measurement of two peaks must be included. You will receive an error if there is only one peak in a measurement defined as having two peaks.
 
 #' @export
+#' @examples
+#' harmonize(flowset, processing = 'retro', two_peaks = c(10:20), one_peak = c(1:9), theshold = 0.01)
+#'
 #' @import flowCore
 #' @importFrom flowCore read.flowSet
 #' @importFrom flowStats gaussNorm
@@ -150,12 +157,15 @@ rename_markers <- function(flowset) {
 
 #' Create a dataframe from a flowset object and option to save csv
 #'
-#'
-#' Takes in a flowset object and creates a dataframe. The name of each sample will be added as the column "Sample"
+#' Takes in a flowset object and creates a dataframe. By default no output path is added and a data frame is returned.
+#' The name of each sample will be added as the column "Sample"
 #' into the final dataframe. To save the dataframe directly as a csv set save.csv = filepath/tosave/
 #' The filename will be the name of the flowset object input into the function.
-
+#'
 #' @export
+#' @examples
+#' flowset_to_csv(flowset)
+#' flowset_to_csv(flowset, output_path = "path/to/location/", save.csv = TRUE)
 #' @importFrom flowCore fsApply
 flowset_to_csv=function(flowset, output_path, save.csv = FALSE){
   list_of_flowframes=fsApply(rename_markers(flowset),function(x){as.data.frame(x@exprs)})#Makes a list of dataframes
@@ -225,7 +235,6 @@ make_seu <- function(df, AB_vector){
 # select outputs, generates - UMAPS, heatmaps, clustree  : save to folder or put in global environ
 # creates list object to run stats
 
-
 #' Explore different clustering methods and parameters in single cell data
 #'
 #' Takes in a Seurat object. Choose a clustering method or vector of clustering methods:
@@ -247,8 +256,11 @@ make_seu <- function(df, AB_vector){
 #' better cluster. The number of clusters with the highest Calinski-Harabasz index is the optimal number
 #' of clusters (Calinski & Harabasz, 1974). Davies-Bouldin index has no upper bound but the minimum index
 #' is 0. A lower index indicates better clusters (Davies & Bouldin, 1979).
-
-
+#'
+#' @examples
+#' explore_param(seuratObj, cluster_method = "flowsom",df_input = flowset_dataframe, flow_k = 10)
+#' explore_param(seuratObj, cluster_method = "louvain",df_input = flowset_dataframe, flow_k = NULL,
+#' pheno_lou_kn = 100, lou_resolution = c(0,0.5,1), pcdim = 1:10)
 #' @export
 #' @import Seurat dplyr FlowSOM cluster fpc clusterSim clustree
 #' @importFrom Seurat CreateSeuratObject AddMetaData
@@ -626,8 +638,6 @@ louvain <- function(input, #seu object
 #' Select one pararmeter to vary resolutions = c(0.1,0.3,0.5,0.8) or kn = c(20,40,60,80).
 #' The function also calculates the mean and standard deviation of the number of clusters
 #' for each resolution or kn. The function returns an outputs and plot of the results.
-
-
 #' @export
 #' @importFrom Seurat FindNeighbors FindClusters RunUMAP
 #' @importFrom flexclust randIndex

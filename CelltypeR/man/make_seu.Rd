@@ -12,3 +12,6 @@ functions. This function creates a Seurat object from the Flow Cytometry express
 in a data frame format where cells are rows and Markers are columns.  A column indicating
 the starting fsc file "Sample" is required and added as meta data into the Seurat object.
 }
+\examples{
+make_seu(df = flow_dataframe, AB_vector = markers_names)
+}

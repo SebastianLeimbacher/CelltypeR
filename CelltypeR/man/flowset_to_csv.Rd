@@ -7,7 +7,12 @@
 flowset_to_csv(flowset, output_path, save.csv = FALSE)
 }
 \description{
-Takes in a flowset object and creates a dataframe. The name of each sample will be added as the column "Sample"
+Takes in a flowset object and creates a dataframe. By default no output path is added and a data frame is returned.
+The name of each sample will be added as the column "Sample"
 into the final dataframe. To save the dataframe directly as a csv set save.csv = filepath/tosave/
 The filename will be the name of the flowset object input into the function.
+}
+\examples{
+flowset_to_csv(flowset)
+flowset_to_csv(flowset, output_path = "path/to/location/", save.csv = TRUE)
 }

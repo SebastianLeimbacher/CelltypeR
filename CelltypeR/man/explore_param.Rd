@@ -38,3 +38,8 @@ better cluster. The number of clusters with the highest Calinski-Harabasz index 
 of clusters (Calinski & Harabasz, 1974). Davies-Bouldin index has no upper bound but the minimum index
 is 0. A lower index indicates better clusters (Davies & Bouldin, 1979).
 }
+\examples{
+explore_param(seuratObj, cluster_method = "flowsom",df_input = flowset_dataframe, flow_k = 10)
+explore_param(seuratObj, cluster_method = "louvain",df_input = flowset_dataframe, flow_k = NULL,
+pheno_lou_kn = 100, lou_resolution = c(0,0.5,1), pcdim = 1:10)
+}

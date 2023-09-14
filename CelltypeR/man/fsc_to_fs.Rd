@@ -4,11 +4,14 @@
 \alias{fsc_to_fs}
 \title{Read in fsc (Flow cytometry) files and creates a flowset file with Channel names}
 \usage{
-fsc_to_fs(input_path, downsample = "none")
+fsc_to_fs(input, downsample = "none")
 }
 \description{
 This function to take in a folder/file path of fsc flow cytometer file selecting the FSC-A
 value for each channel.  Each sample file in the folder will be a slot in the flowset object.
 The samples will be names by the file names and can be renamed. The channel names will automatically
 be added from within the flow data. If only a subset of cells is desired downsampling is an option.
+}
+\examples{
+fsc_to_fs(input_folder_fsc, downsample = "none")
 }

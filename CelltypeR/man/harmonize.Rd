@@ -13,8 +13,14 @@ harmonize(
 )
 }
 \description{
-This function to take in a folder/file path of fsc flow cytometer file selecting the FSC-A
-value for each channel.  Each sample file in the folder will be a slot in the flowset object.
-The samples will be names by the file names and can be renamed. The channel names will automatically
-be added from within the flow data. If only a subset of cells is desired downsampling is an option.
+This function to takes in the flowset object created from a fsc files and transformed the data
+If 'retro' (default) is selected the samples will be biexponentially transformed, aligned and then reverse transformed
+If 'biexp' is selected the samples will only be biexponentially transformed
+If 'align' is selected the samples will be transformed and aligned but not reverse transformed
+The two_peaks and one_peak argument refer to the biexp transformed data and are the indexes of which measures have
+one or two peaks. At least one measurement of two peaks must be included. You will receive an error if there is only one peak in a measurement defined as having two peaks.
+}
+\examples{
+harmonize(flowset, processing = 'retro', two_peaks = c(10:20), one_peak = c(1:9), theshold = 0.01)
+
 }

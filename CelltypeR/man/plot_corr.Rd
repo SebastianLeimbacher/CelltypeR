@@ -11,3 +11,6 @@ The function requires the data frame output from the find_correlation function
 Filter out cell type annotation with fewer than 'min_cells' for the plot
 The threshold with draw a line on the plot.  This can be set to the R theshold used in the find_correlation function.
 }
+\examples{
+plot_corr(cor_df, threshold = 0.3, min_cells = 300)
+}
