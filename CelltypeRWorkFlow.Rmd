@@ -1,0 +1,56 @@
+---
+title: "CelltypeR Workflow"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Included in this tutorial
+
+1. Data preprocessing
+a. Read FlowJo files into R.
+b. Create a flow frame with intensity measurements for each marker for all          samples within the experiment to be analyzed.  
+c. Harmonize data 
+d. Create dataframe with intensity of expression (area) for each marker
+e. Create a Seurat object
+
+2. Cluster data
+a. Explore clustering methods and parameters.
+b. Determine cluster stability
+c. Create clusters with best conditions
+
+3. Annotate clusters with cell types.
+a. Predict cell types by correlation matrix
+b. Visualize expression by cluster for manual annotation
+c. With annotated an data set train Random Forest classifier to predict cell        types. (will only work if you have an already labelled dataset and train the model)
+d. annotated an data set predict cell types with Seurat label transfer. (will only work if you have a reference labelled data object).
+e. For each prediction calculate the top most predicted cell per cluster and take a consensus to annotate clusters. Make a dataframe of predicted annotations. 
+f. Add cluster annotations.
+
+4. Compare groups
+a. bar charts of proportions
+b. permutations tests
+c. ANOVAs and tukey tests
+
+5.Training of random forest model.
+
+# Set up
+Install CelltypeR and load the library
+
+```{r}
+# devtools are required
+
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
