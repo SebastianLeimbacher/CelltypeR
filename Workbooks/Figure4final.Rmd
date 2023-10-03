@@ -26,10 +26,6 @@ seu.q <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Anal
 ```
 
 
-
-
-
-
 Visualize marker expression
 ```{r}
 for (i in AB) {
@@ -40,7 +36,6 @@ for (i in AB) {
 
 
 Heatmap of marker expression by cluster
-
 ```{r}
 library(data.table)
 
@@ -295,6 +290,7 @@ saveRDS(seu.q,"/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmi
 Seurat label transfer
 
 ```{r}
+seu.r <- readRDS()
 # notes this function automatically selects the total number of markers as the dim.  So dim = 1:13 here. 
 seu.q <- seurat_predict(seu.q, seu.r, ref_id = 'labels', 
                         refdata = seu.r$labels,
@@ -597,8 +593,6 @@ Proportion tests
 
 #library(scProportionTest)
 # create a propotion test object
-
-
 
 Idents(seu.q) <- "Celltypes"
 prop_test <- sc_utils(seu.q)

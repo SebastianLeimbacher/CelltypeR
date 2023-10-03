@@ -768,6 +768,7 @@ get_clusters <- function(seu, method = "louvain",
   # make the UMAP for all object
   seu <- RunUMAP(seu, dims = pcdim, n.neighbors = k, min.dist = 0.4,
                  spread = 1.5)
+  print("UMAP run")
   if(method == "louvain"){
     seu <- FindNeighbors(seu, dims = pcdim, k.param = k, reduction = "pca")
     # must take one less than the number of antibodies
@@ -813,7 +814,7 @@ get_clusters <- function(seu, method = "louvain",
                       min.cutoff = 'q1',
                       max.cutoff ='99',
                       label.size = 1)
-
+    print(p1)
   }
   if(save_plots){
     png(paste(save_plots, "UMAPfeatureplots.png", sep = ""))
@@ -968,8 +969,7 @@ plot_corr <- function(df, threshold = 0, min_cells = 100) {
     theme(axis.text.x = element_text(size = 12, colour = "black", angle = 90, hjust=0.99,vjust=0.5),
           axis.text.y = element_text(size = 12, colour = "black"),
           axis.title.x = element_text(size = 14, colour = "black"),
-          axis.title.y = element_text(size = 14, colour = "black"),
-          plot.margin = margin(15, 1, 1, 1)) +
+          axis.title.y = element_text(size = 14, colour = "black")) +
 
     scale_y_continuous(expand = c(0, 0)) + # take the space away below the bars
     xlab('Assigned cell type') +
@@ -1219,18 +1219,18 @@ RFM_predict <- function(seu, rf){
 #'Seurat object as 'seu.pred'.
 #' @export
 #' @importFrom Seurat AddMetaData FindTransferAnchors TransferData
-seurat_predict <- function(seu.q, seu.r, ref_id = 'labels', refdata = seu.r$labels,
-                           down.sample = 500, markers, kw = 50, kfilter = 100){
+seurat_predict <- function(seu.q, seu.r, ref_id = 'labels', seu_meta = seu.r$labels,
+                           down.sample = 500, markers, kw = 50, kfilter = 100, dims =10){
   Idents(seu.r) <- ref_id
   seu.r <- subset(seu.r, downsample = down.sample)
   # find anchors
   anchors <- FindTransferAnchors(reference = seu.r,
                                  query = seu.q, features = markers,
                                  reference.reduction = "pca",
-                                 dim= 1:length(markers),
-                                 npcs = length(markers),
+                                 dim= 1:dims,
+                                 npcs = dims,
                                  k.filter = kfilter,
-                                 max.features = length(markers))
+                                 max.features = length(markers), verbose = FALSE)
   n_anchors <- dim(as.data.frame(anchors@anchors))[1]
   # Ensure kw is always an even number
   if(n_anchors < kw) {
@@ -1239,11 +1239,10 @@ seurat_predict <- function(seu.q, seu.r, ref_id = 'labels', refdata = seu.r$labe
       kw <- kw -1
     }
   }
-  predictions <- TransferData(anchorset = anchors, refdata = refdata,
-                              dims = 1:length(markers), k.weight = kw, query = seu.q)
+  predictions <- TransferData(anchorset = anchors, refdata = seu_meta,
+                              dims = 1:dims, k.weight = kw, query = seu.q)
   seu.q <- AddMetaData(seu.q, metadata = predictions$predicted.id,
                        col.name = 'seu.pred')
-
 }
 
 
