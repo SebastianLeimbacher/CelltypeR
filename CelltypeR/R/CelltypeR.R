@@ -1656,7 +1656,7 @@ run_stats <- function(input_df, group_cols = c("Sample", "CellType", "Marker","G
   # we can either use each cell as an n or the replicates as n
   # if get means is true we will use a replicate as an n and need to calculate means
   # get_means is a function below
-  if (use_means) {
+  if (use_means){
     df_means <- get_means(input_df, group_cols, value_col)
     print("Mean values per group have been calculated")
   } else {
