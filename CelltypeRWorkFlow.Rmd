@@ -617,21 +617,26 @@ var.names <- c("Sample","Genotype","DaysinFD", "Batch", "ExDate", "Celltypes")
 # AB is the list of markers we defined earlier and all the markers you wish to compare.  A new vector with fewer markers can be use.
 df.for.stats <- Prep_for_stats(seu, marker_list = AB, variables = var.names, 
                                marker_name = 'Marker')
+
+# rename columns
+colnames(df.for.stats) <- c("Sample","IPSC","Days","Batch",
+                            "ExDate","CellType","Marker","value")
+
+head(df.for.stats)
+
 ```
  
 Run a one-way ANOVA comparing expression (all markers) across genotypes for each cell type.  With Tukey's posthoc tests. 
 ```{r}
-# the celltype needs to be named "CellType"
-
-colnames(df.for.stats) <- c("Sample","IPSC","Days","Batch",
-                            "ExDate","CellType","Marker","value")
-
-
 # With one way anova we will compare differences across all marker expression
-# here we will run an ANOVA across IPSC lines for each celltype
+# here we will run an ANOVA across IPSC lines for each cell type
 # post hoc Tukey's HSD test will tell us which cell lines are different
+# by default this function will treat replicates as n, which means in this case n=3 if we compare iPSC lines
+# we can set the cells to be n if there is only one replicate, however, this not recommended. To use cells as replicates change
+# use_means = TRUE into use_means = FALSE
+
 test.stats1 <- run_stats(input_df= df.for.stats, 
-                         group_cols = c("Sample","IPSC", "CellType","Marker"),
+                         group_cols = c("Sample","IPSC","Marker","CellType"),
                      value_col = "value",
                      stat_type = "ANOVA", id1 = 'IPSC', 
                      id2 = NULL, use_means = TRUE,
@@ -639,7 +644,132 @@ test.stats1 <- run_stats(input_df= df.for.stats,
 
 # see the dataframe results
 anv <- test.stats1[['ANOVA']]
+
 tk <- test.stats1[['TukeyHSD']]
+head(anv)
+head(tk)
 
 ```
+Overall marker expression is not different between cell types for any of the cell types.
+
+Test one-way anova for each marker combining cell types
+```{r}
+test.stats2 <- run_stats(input_df= df.for.stats, 
+                         group_cols = c("Sample","IPSC","Marker","CellType"),
+                     value_col = "value",
+                     stat_type = "ANOVA", id1 = 'IPSC', 
+                     id2 = NULL, use_means = TRUE,
+                     loop_by = "Marker")
+# get the results out of the output list
+anv <- test.stats2[['ANOVA']]
+tk <- test.stats2[['TukeyHSD']]
+head(anv)
+head(tk)
+
+```
+
+All the markers are significant across cell types by one-way ANOVA. 
+Tukey's test show which specific contrasts significantly different with corrected pvalues. 
+
+
+Let compare each marker separately for each cell type using a 2way anova.
+```{r}
+test.stats3 <- run_stats(input_df= df.for.stats, 
+                         group_cols = c("Sample","IPSC","Marker","CellType"),
+                     value_col = "value",
+                     stat_type = "ANOVA2", id1 = 'IPSC', 
+                     id2 = "Marker", use_means = TRUE,
+                     loop_by = "CellType")
+```
+
+Look at the 2-way ANOVA outputs
+```{r}
+anv2 <- test.stats3$ANOVA
+# the main effects for IPSC and Marker are shown and the interaction effect in the ANOVA 2way results
+head(anv2)
+```
+Marker often has a main effect but this indicates the levels between different markers vary which is not biologically relevant. 
+The motivation to include marker is to see the interaction effect of marker and another variable, in our case IPSC line (Genotype). We have some main effects of IPSC and these also have significant interaction effects.  We see here astrocytes2, neurons2, neurons1 and radial glia2 have significant main effects of iPSC lines and significant interaction effects. 
+
+See which iPSC lines are different for which markers we can look at the Tukey posthoc tests
+```{r}
+# In the output list there is a data frame for each main effect, the total interaction effects and the interaction effect where you have either the same variable 1 or the same variable 2
+# the filtered interaction effects will have the meaningful comparisons
+
+test.stats3$TukeyHSD$IPSC  # main effect
+test.stats3$TukeyHSD$Marker  # main effect
+test.stats3$TukeyHSD$`IPSC:Marker` # interaction effect - all contrasts
+test.stats3$TukeyHSD$`Interactions_ IPSC` # interaction effects line comparisons for the same Marker
+test.stats3$TukeyHSD$`Interactions_ Marker` # Compare the expression levels of different markers within the same IPSC line
+
+# the useful comparison is to compare expression of each marker between IPSC lines, for each cell type.
+tk2IPSC <- test.stats3$TukeyHSD$`Interactions_ IPSC`
+head(tk2IPSC)
+
+```
+Here Interaction_IPSC is the about that is relevant for us to determine if there are difference in expression of specific markers between iPSC lines. 
+
+There are still a lot of interactions to look through even when selecting only the meaningful contrasts.
+We can filter for just significant effects
+```{r}
+# we are using dplyr
+tk.filtered <- tk2IPSC %>% filter(p.adj <= 0.05)
+tk.filtered
+
+```
+We have 10 significant differences. 
+
+This completes the CelltypeR workflow. 
+Above we used a previously trained RFM. Below we is the function for training the model. You will need to run this on your first data or a data subset and can then apply it to future datasets. 
+
+#Training a Random Forest Classifier Model
+We have created a function that optimizes training over different parameters.  The function uses RandomForest library and Caret. We use cross fold validation to avoid over fitting.  However, this function can take hours to run because it runs multiple training iteractions of the model. We recommend using this in HPC with multiple CPUs. The function is made to run parallel processes and will train models in parallel if more CPUs are avialable. 
+
+```{r}
+# here we will train a model with fewer cells.  We have already only 9000 cells in our example data. 
+# note that if there are too few cells, for example < 100 of a given cell type you will have a poor model.  It is more effect to remove that cell type from your model.
+
+# We will check how many of each cell type we have
+table(seu$Celltype)
+# are data is not well balance, we have a larger amount of Neurons2.  
+# Here I will downsample based on cell type to have an improved balance.
+
+```
+
+Subset
+```{r}
+# uses Seurat function
+Idents(seu) <- "Celltype"
+seu.sub <- subset(seu, downsample = 800)
+# now check the cell counts again
+table(seu.sub$Celltype)
+```
+
+
+Train the model
+```{r}
+
+rf <- RFM_train(seurate_object = seu.sub,
+                      markers = AB,  # we can choose which markers we want to included
+                      annotations = seu.sub$Celltypes,  # annotations you want to train 
+                      num_folds = 3,  # for cross validation to avoid overfitting
+                      downsample = 'none',  # we can also downsample here but it is not be cell type
+                      seed = 222, # for reproducibility
+                      mytry = c(5:7),   # how many markers to include to start in the decision tree. 
+                      maxnodes = c(15:18),
+                      trees = c(1500,1800,2000),
+                      cores_to_use = 4)  # don't set to more cores than you have avialable
+
+# note on mytry - too few markers will over fit
+# too many markers you won't be getting a random model because all the trees with have almost the same input
+
+
+```
+
+save the model
+```{r}
+saveRDS(rf, "/Users/rhalenathomas/GITHUB/CelltypeR_old/October2023records/testing/TrainedRFM.RDS")
+
+```
+
 

@@ -1634,96 +1634,49 @@ Prep_for_stats <- function(seu, marker_list, variables, marker_name = 'Marker'){
 #' changed if the input data frame wasn't created with the "Prep_for_stats" function.
 
 #' @export
-run_stats <- function(input_df, group_cols = c("Sample", "CellType", "Marker"),
+
+run_stats <- function(input_df, group_cols = c("Sample", "CellType", "Marker","Genotype"),
                       value_col = "value",
                       stat_type = "ANOVA",
-                      id1,
+                      id1 = "Genotype",
                       id2 = NULL,
                       use_means = TRUE,
-                      loop_by = "CellType") {
+                      loop_by = "none") {
+  # checking if the input is correct to the function
+  if (!all(group_cols %in% colnames(input_df))) {
+    stop("Some group columns are not present in the input data frame.")
+  }
+
+  if (!value_col %in% colnames(input_df)) {
+    stop("The value column is not present in the input data frame.")
+  }
+  # make empty list for the results
   aov.l <- list() # for ANOVA output
   tuk.l <- list() # for TUKEY output
+  # we can either use each cell as an n or the replicates as n
+  # if get means is true we will use a replicate as an n and need to calculate means
+  # get_means is a function below
   if (use_means) {
     df_means <- get_means(input_df, group_cols, value_col)
-
+    print("Mean values per group have been calculated")
   } else {
     df_means <- input_df
     names(df_means)[names(df_means) == 'value'] <- 'expression'
   }
-
+  # we can select one-way or two way anova
+  # here we are selecting one-way anova
+  # we have only one independent variable
   if (stat_type == "ANOVA") {
-    if (loop_by == "CellType") {
-      var_list <- unique(df_means$Celltype)
-      # to store outputs and format in a readable way
-      for (i in var_list) {
-        df <- df_means %>% filter(loop_by == i)
-        one_way <- aov(expression ~ df[[id1]], data = df)
-        output <- summary(one_way)
-        aov.l[[as.character(i)]] <- output # Append output to list
-        # now the posthoc test
-        tukey <- TukeyHSD(one_way)
-        tuk.l[[as.character(i)]] <- tukey
-      }
-      aov_df <- do.call(rbind, lapply(seq_along(aov.l), function(i) {
-        data.frame(Celltype = names(aov.l)[i],
-                   IndependentVariable = id1,
-                   Fvalue = aov.l[[i]][[1]][["F value"]][1],
-                   pValue = aov.l[[i]][[1]][["Pr(>F)"]][1],
-                   Df = aov.l[[i]][[1]][["Df"]][1],
-                   SumSqEffect = aov.l[[i]][[1]][["Sum Sq"]][1],
-                   MeanSqEffect = aov.l[[i]][[1]][["Mean Sq"]][1],
-                   SumSqError = aov.l[[i]][[1]][["Sum Sq"]][2],
-                   MeanSqError = aov.l[[i]][[1]][["Mean Sq"]][2]
-        )
-      }
-      ))
-      print(paste("ANOVA results for each cell type comparing ", id1))
-      tuk_df <- do.call(rbind, lapply(seq_along(tuk.l), function(i){
-        rownames <- row.names(tuk.l[[i]][[1]])
-        data.frame(Celltype = names(tuk.l)[i],
-                   IndependentVariable = id1,
-                   Contrast = rownames,
-                   tuk.l[[i]][[1]], row.names = NULL)
-      }))
-      print(paste("TukeyHSD results for each cell type comparing ", id1))
-    } else if (loop_by == "Marker") {
-      var_list <- unique(df_means$Marker)
-      for (i in var_list) {
-        df <- df_means %>% filter(Marker == i)
-        one_way <- aov(expression ~ df[[id1]], data = df)
-        output <- summary(one_way)
-        aov.l[[as.character(i)]] <- output # Append output to list
-        # now the posthoc test
-        tukey <- TukeyHSD(one_way)
-        tuk.l[[as.character(i)]] <- tukey
-      }
-      aov_df <- do.call(rbind, lapply(seq_along(aov.l), function(i) {
-        data.frame(Marker = names(aov.l)[i],
-                   IndependentVariable = id1,
-                   Fvalue = aov.l[[i]][[1]][["F value"]][1],
-                   pValue = aov.l[[i]][[1]][["Pr(>F)"]][1],
-                   Df = aov.l[[i]][[1]][["Df"]][1],
-                   SumSqEffect = aov.l[[i]][[1]][["Sum Sq"]][1],
-                   MeanSqEffect = aov.l[[i]][[1]][["Mean Sq"]][1],
-                   SumSqError = aov.l[[i]][[1]][["Sum Sq"]][2],
-                   MeanSqError = aov.l[[i]][[1]][["Mean Sq"]][2]
-        )
-      }
-      ))
-      print(paste("ANOVA results for each marker comparing ", id1))
-      tuk_df <- do.call(rbind, lapply(seq_along(tuk.l), function(i){
-        rownames <- row.names(tuk.l[[i]][[1]])
-        data.frame(Marker = names(tuk.l)[i],
-                   IndependentVariable = id1,
-                   Contrast = rownames,
-                   tuk.l[[i]][[1]], row.names = NULL)}))
-      print(paste("Tukey results for each marker comparing ", id1))
-    } else {
+    print("Running one way ANOVA")
+    # if we want all the variables that are not the independed variable to be merged loop by is none
+    if(loop_by== "none"){
       one_way <- aov(expression ~ df_means[[id1]], data = df_means)
       aov.l <- summary(one_way)
-      # now the posthoc test
+      # now run the posthoc test
       tukey <- TukeyHSD(one_way)
+      # add the results to the tukey list
       tuk.l <- tukey
+      # create a data frame for the anova
       aov_df <- data.frame(
         IndependentVariable = id1,
         Fvalue = aov.l[[1]][["F value"]][1],
@@ -1735,20 +1688,115 @@ run_stats <- function(input_df, group_cols = c("Sample", "CellType", "Marker"),
         MeanSqError = aov.l[[1]][["Mean Sq"]][2]
       )
       print("ANOVA results for all celltypes and markers combined")
+      # create a data frame for the tukey tests
       rownames <- row.names(tuk.l[[1]])
       tuk_df  <- data.frame(
         IndependentVariable = id1,
         Contrast = rownames,
         tuk.l[[1]], row.names = NULL)
       print("TukeyHSD results for all celltypes and markers combined")
+      output_list <- list(ANOVA = aov_df,TukeyHSD = tuk_df)
     }
-    output_list <- list(ANOVA = aov_df,TukeyHSD = tuk_df)
-  }else if (stat_type == "ANOVA2") {
-    if (loop_by == "CellType") {
-      var_list <- unique(df_means$CellType)
+
+    # if each cell type or another variable is to be evaluated independently then we loop over that variable defined by loop by
+    else{
+      var_list <- unique(df_means[[loop_by]])
       # to store outputs and format in a readable way
       for (i in var_list) {
-        df <- df_means %>% filter(CellType == i)
+        # from rlang library function !!syn sets the variable loop_by to be a character
+        df <- df_means %>% filter(!!sym(loop_by) == i)
+        one_way <- aov(expression ~ df[[id1]], data = df)
+        output <- summary(one_way)
+        aov.l[[as.character(i)]] <- output # Append output to list
+        # now the posthoc test
+        tukey <- TukeyHSD(one_way)
+        tuk.l[[as.character(i)]] <- tukey
+      }
+      # create a data frame for each anova output and put it in the list
+      aov_df <- do.call(rbind, lapply(seq_along(aov.l), function(i) {
+        data.frame(LoopVariable = names(aov.l)[i],
+                   IndependentVariable = id1,
+                   Fvalue = aov.l[[i]][[1]][["F value"]][1],
+                   pValue = aov.l[[i]][[1]][["Pr(>F)"]][1],
+                   Df = aov.l[[i]][[1]][["Df"]][1],
+                   SumSqEffect = aov.l[[i]][[1]][["Sum Sq"]][1],
+                   MeanSqEffect = aov.l[[i]][[1]][["Mean Sq"]][1],
+                   SumSqError = aov.l[[i]][[1]][["Sum Sq"]][2],
+                   MeanSqError = aov.l[[i]][[1]][["Mean Sq"]][2]
+        )
+      }
+      ))
+      print(paste("ANOVA results for each ", loop_by," comparing ", id1))
+      # create a data frame for each tukey post hoc test  and put it in the list
+      tuk_df <- do.call(rbind, lapply(seq_along(tuk.l), function(i){
+        rownames <- row.names(tuk.l[[i]][[1]])
+        data.frame(LoopVariable = names(tuk.l)[i],
+                   IndependentVariable = id1,
+                   Contrast = rownames,
+                   tuk.l[[i]][[1]], row.names = NULL)
+      }))
+      print(paste("TukeyHSD results for each ", loop_by," comparing ", id1))
+      output_list <- list(ANOVA = aov_df,TukeyHSD = tuk_df)
+    }
+    # If two way anova is select two independent variables are compared
+  }else if (stat_type == "ANOVA2") {
+    # run the 2 way anova
+    print("Running 2-way ANOVA")
+    if (loop_by == "none"){
+      df <- df_means
+      formula <- as.formula(paste0("expression ~ ", id1, "*", id2))
+      two_way <- aov(formula, data = df)
+      aov.l <- summary(two_way)
+      # make the df of the ANOVA two way results
+      rownames <- row.names(aov.l[[1]])
+      aov_df <- data.frame(
+        Contrast = rownames,
+        aov.l[[1]], row.names = NULL
+      )
+      # get ride of the residual which will confuse things and the extra row added
+      # fix the column names
+      colnames(aov_df) <- c("Contrast","Df","SumSq","MeanSq",
+                            "Fvalue","Pvalue")
+      # remove extra spaces
+      aov_df <- aov_df %>% mutate_all(trimws)
+      # remove residuals
+      aov_df <- aov_df[aov_df$Contrast != "Residuals", ]
+
+      # now the posthoc test
+      tukey <- TukeyHSD(two_way)
+      tuk.l <- tukey
+      print("ANOVA results for all celltypes and markers combined")
+      # get the Tukey outputs
+      for(J in 1:length(tuk.l)){
+        rownames <- row.names(tuk.l[[J]])
+        tuk_df <- data.frame(
+          Contrast = names(tuk.l[J]),
+          Subgroups = rownames,
+          tuk.l[[J]], row.names = NULL)
+        # put the dataframe in a list
+        tuk_summary.l[[as.character(names(tuk.l)[J])]] <- tuk_df
+        dft <- tuk_summary.l[[3]]
+        filtered_df <- dft %>%
+          filter(sapply(strsplit(Subgroups, "[:-]"), "[", c(2, 4)) %>%
+                   apply(2, function(x) all(x == x[1])))
+        # add the filtered dataframe for only id2 pairs
+        tuk_summary.l[[paste("Interactions_",id1)]] <- filtered_df
+        # filter the interaction dataframe
+        filtered_df2 <- dft %>%
+          filter(sapply(strsplit(Subgroups, "[:-]"), "[", c(1, 3)) %>%
+                   apply(2, function(x) all(x == x[1])))
+        # add the filtered dataframe to have matching id1 or id2 contrasts
+        tuk_summary.l[[paste("Interactions_",id2)]] <- filtered_df2
+        # put the outputs into a list
+        output_list <- list(ANOVA = aov_df,TukeyHSD = tuk_summary.l)
+      }
+      # now if you are running a loop it will loop by the selected variable
+    }else {
+      # get the vector of entries to loop by
+      var_list <- unique(df_means[[loop_by]])
+      # to store outputs and format in a readable way
+      for (i in var_list) {
+        df <- df_means %>% filter(!!sym(loop_by) == i)
         formula <- as.formula(paste0("expression ~ ", id1, "*", id2))
         two_way <- aov(formula, data = df)
         output <- summary(two_way)
@@ -1761,7 +1809,7 @@ run_stats <- function(input_df, group_cols = c("Sample", "CellType", "Marker"),
       aov_df <- do.call(rbind, lapply(seq_along(aov.l), function(i) {
         data.frame(
           rownames <- row.names(aov.l[[i]][[1]]),
-          data.frame(Celltype = names(aov.l)[i],
+          data.frame(LoopVariable = names(aov.l)[i],
                      Contrast = rownames,
                      aov.l[[i]][[1]], row.names = NULL
 
@@ -1771,7 +1819,7 @@ run_stats <- function(input_df, group_cols = c("Sample", "CellType", "Marker"),
       # get ride of the residual which will confuse things and the extra row added
       aov_df <- aov_df[2:8]
       # fix the column names
-      colnames(aov_df) <- c("Celltype","Contrast","Df","SumSq","MeanSq",
+      colnames(aov_df) <- c("LoopVariable","Contrast","Df","SumSq","MeanSq",
                             "Fvalue","Pvalue")
       # remove extra spaces
       aov_df <- aov_df %>% mutate_all(trimws)
@@ -1812,128 +1860,11 @@ run_stats <- function(input_df, group_cols = c("Sample", "CellType", "Marker"),
                   "and ", id2))
       output_list <- list(ANOVA = aov_df,TukeyHSD = tuk_summary.l)
 
-    } else if (loop_by == "Marker") {
-      var_list <- unique(df_means$Marker)
-      # to store outputs and format in a readable way
-      for (i in var_list) {
-        df <- df_means %>% filter(Marker == i)
-        formula <- as.formula(paste0("expression ~ ", id1, "*", id2))
-        two_way <- aov(formula, data = df)
-        output <- summary(two_way)
-        aov.l[[as.character(i)]] <- output # Append output to list
-        # now the posthoc test
-        tukey <- TukeyHSD(two_way)
-        tuk.l[[as.character(i)]] <- tukey
-      }
-      # make a dataframe of the 2 way anova results
-      aov_df <- do.call(rbind, lapply(seq_along(aov.l), function(i) {
-        data.frame(
-          rownames <- row.names(aov.l[[i]][[1]]),
-          data.frame(Marker = names(aov.l)[i],
-                     Contrast = rownames,
-                     aov.l[[i]][[1]], row.names = NULL
-
-          )
-        )
-      }))
-      # get ride of the residual which will confuse things and the extra row added
-      aov_df <- aov_df[2:8]
-      # fix the column names
-      colnames(aov_df) <- c("Marker","Contrast","Df","SumSq","MeanSq",
-                            "Fvalue","Pvalue")
-      # remove extra spaces
-      aov_df <- aov_df %>% mutate_all(trimws)
-      # remove residuals
-      aov_df <- aov_df[aov_df$Contrast != "Residuals", ]
-
-      print(paste("ANOVA 2way results for each Marker comparing ", id1,
-                  "and ", id2))
-      # make dataframes from each of the tukey results and put them into a list
-      tuk_summary.l <- list()
-
-      for(J in 1:length(tuk.l[[1]])){
-        tuk_df <- do.call(rbind, lapply(seq_along(tuk.l), function(i){
-          rownames <- row.names(tuk.l[[i]][[J]])
-          data.frame(Marker = names(tuk.l)[i],
-                     Contrast = names(tuk.l[[i]])[J],
-                     Subgroups = rownames,
-                     tuk.l[[i]][[J]], row.names = NULL)
-        }))
-        # put the dataframe in a list
-        tuk_summary.l[[as.character(names(tuk.l[[i]])[J])]] <- tuk_df
-      }
-      # filter the interaction dataframe to have only df1 contrasts
-      dft <- tuk_summary.l[[3]]
-      filtered_df <- dft %>%
-        filter(sapply(strsplit(Subgroups, "[:-]"), "[", c(2, 4)) %>%
-                 apply(2, function(x) all(x == x[1])))
-      # add the filtered dataframe for only id2 pairs
-      tuk_summary.l[[paste("Interactions_",id1)]] <- filtered_df
-      # filter the interaction dataframe
-      filtered_df2 <- dft %>%
-        filter(sapply(strsplit(Subgroups, "[:-]"), "[", c(1, 3)) %>%
-                 apply(2, function(x) all(x == x[1])))
-      # add the filtered dataframe to have matching id1 or id2 contrasts
-      tuk_summary.l[[paste("Interactions_",id2)]] <- filtered_df2
-
-      print(paste("TukeyHSD results for each Marker comparing ", id1,
-                  "and ", id2))
-      output_list <- list(ANOVA = aov_df,TukeyHSD = tuk_summary.l)
-    } else {
-      df <- df_means
-      formula <- as.formula(paste0("expression ~ ", id1, "*", id2))
-      two_way <- aov(formula, data = df)
-      aov.l <- summary(two_way)
-      # make the df of the ANOVA two way results
-      rownames <- row.names(aov.l[[1]])
-      aov_df <- data.frame(
-        Contrast = rownames,
-        aov.l[[1]], row.names = NULL
-
-      )
-      # get ride of the residual which will confuse things and the extra row added
-      # fix the column names
-      colnames(aov_df) <- c("Contrast","Df","SumSq","MeanSq",
-                            "Fvalue","Pvalue")
-      # remove extra spaces
-      aov_df <- aov_df %>% mutate_all(trimws)
-      # remove residuals
-      aov_df <- aov_df[aov_df$Contrast != "Residuals", ]
-
-      # now the posthoc test
-      tukey <- TukeyHSD(two_way)
-      tuk.l <- tukey
-      print("ANOVA results for all celltypes and markers combined")
-      # get the Tukey outputs
-      for(J in 1:length(tuk.l)){
-        rownames <- row.names(tuk.l[[J]])
-        tuk_df <- data.frame(
-          Contrast = names(tuk.l[J]),
-          Subgroups = rownames,
-          tuk.l[[J]], row.names = NULL)
-        # put the dataframe in a list
-        tuk_summary.l[[as.character(names(tuk.l)[J])]] <- tuk_df
-        dft <- tuk_summary.l[[3]]
-        filtered_df <- dft %>%
-          filter(sapply(strsplit(Subgroups, "[:-]"), "[", c(2, 4)) %>%
-                   apply(2, function(x) all(x == x[1])))
-        # add the filtered dataframe for only id2 pairs
-        tuk_summary.l[[paste("Interactions_",id1)]] <- filtered_df
-        # filter the interaction dataframe
-        filtered_df2 <- dft %>%
-          filter(sapply(strsplit(Subgroups, "[:-]"), "[", c(1, 3)) %>%
-                   apply(2, function(x) all(x == x[1])))
-        # add the filtered dataframe to have matching id1 or id2 contrasts
-        tuk_summary.l[[paste("Interactions_",id2)]] <- filtered_df2
-      }
-      output_list <- list(ANOVA = aov_df,TukeyHSD = tuk_summary.l)
     }
-
-    return(output_list)
-  }
+  } # end of option of for 2 way anova
+  return(output_list)
 }
 
-#
 
 # original get means function
 
