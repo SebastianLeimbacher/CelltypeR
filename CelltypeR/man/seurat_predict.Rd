@@ -8,11 +8,12 @@ seurat_predict(
   seu.q,
   seu.r,
   ref_id = "labels",
-  refdata = seu.r$labels,
+  seu_meta = seu.r$labels,
   down.sample = 500,
   markers,
   kw = 50,
-  kfilter = 100
+  kfilter = 100,
+  dims = 10
 )
 }
 \description{

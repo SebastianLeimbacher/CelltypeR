@@ -6,13 +6,13 @@
 \usage{
 run_stats(
   input_df,
-  group_cols = c("Sample", "CellType", "Marker"),
+  group_cols = c("Sample", "CellType", "Marker", "Genotype"),
   value_col = "value",
   stat_type = "ANOVA",
-  id1,
+  id1 = "Genotype",
   id2 = NULL,
   use_means = TRUE,
-  loop_by = "CellType"
+  loop_by = "none"
 )
 }
 \description{

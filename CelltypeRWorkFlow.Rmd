@@ -13,7 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 a. Read FlowJo files into R.
 b. Create a flow frame with intensity measurements for each marker for all          samples within the experiment to be analyzed.  
 c. Harmonize data 
-d. Create dataframe with intensity of expression (area) for each marker
+d. Create data frame with intensity of expression (area) for each marker
 e. Create a Seurat object
 
 2. Cluster data
@@ -41,17 +41,13 @@ Install CelltypeR and load the library
 
 ```{r}
 # devtools are required
-
-install.packages("devtools")
-# load the library
-library(devtools)
-
 # some packages are required to be installed.
 # phenograph is only needed if you want to use that clustering method.  We use Seurat Louvain clustering.
 
 if(!require(devtools)){
   install.packages("devtools") # If not already installed
 }
+
 devtools::install_github("JinmiaoChenLab/Rphenograph")
 
 if (!require("BiocManager", quietly = TRUE))
@@ -75,6 +71,8 @@ Load the library
 
 ```{r, echo=FALSE}
 library("CelltypeR")
+library("Seurat")
+library("tidyverse")
 
 ```
 
