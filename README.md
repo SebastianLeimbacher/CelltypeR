@@ -5,13 +5,23 @@ An R library with functions for a work flow to use flow cytometry to quantify ce
 R library "CelltypeR"
 
 Workbooks:
-- analysis steps and usage of CelltypeR functions.
-- Figures organized by figure.
+- Workbooks using the CelltypeR workflow and functions for each data set analysis
+- Workbooks with all code used to generate figures.
 
-Data folder:
-- raw flow cytometry data (sample.fsc)
+FlowCytometry_Data: 
+- raw flow cytometry data organized by data set
+
+ExampleOuts:
 - reference matrix for correlation predicitons
 - trained random forest classifier for predictions
+- statistics outputs
+
+Rscripts: 
+- Analysis using CelltypeR for larger amounts of data run outside workbooks
+
+CelltypeR: 
+- this folder contains all library documents
+- All functions are in the file CelltypeR.R
 
 If you use this library please site: 
 Thomas, Rhalena A., et al. "CelltypeR: A flow cytometry pipeline to annotate, characterize and isolate single cells from brain organoids." bioRxiv (2022): 2022-11.
