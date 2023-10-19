@@ -135,14 +135,36 @@ harmonize <-  function(flowset, processing = 'retro',
 #' @import ggridges
 #' @importFrom ggridges geom_density_ridges
 
-plotdensity_flowset <- function(flowset){
-  ggplot(melt(lapply(as.list(flowset@frames),function(x){x=as.data.frame(x@exprs)})),
-         aes(x=value,y=L1,fill=L1)) + geom_density_ridges(alpha=.4,verbose=FALSE) +
-    facet_wrap(~variable)+theme_light()}
+plotdensity_flowset <- function(flowset, nsample_include = "all") {
+  # Create the data frame
+  df <- melt(lapply(as.list(flowset@frames), function(x) { x = as.data.frame(x@exprs) }))
+
+  # Count the number of unique samples
+  nsamples <- length(unique(df$L1))
+  if(nsample_include != "all") {
+  # Check if there are more than the number to include samples
+  if(nsamples > nsample_include) {
+    # Select the first 9 unique samples
+    samples_to_plot <- df %>%
+      distinct(L1) %>%
+      head(nsample_include)
+    # Filter the data frame to include only the selected samples
+    df <- df %>%
+      filter(L1 %in% samples_to_plot$L1)
+  }
+  }
+  # make the plot
+  ggplot(df, aes(x = value, y = L1)) +
+    geom_density_ridges(aes(fill = L1), alpha = 0.4, verbose = FALSE) +
+    facet_wrap(~variable) +
+    theme_light() +
+    guides(fill = FALSE)+
+    theme(axis.text.y = element_blank())  # Remove y-axis labels
+}
 
 
 
-###### function called by fsc_to_fs
+###### function called by fsc_to_df
 
 rename_markers <- function(flowset) {
   copy_flowset <- flowset[seq(along = flowset)]
@@ -190,7 +212,6 @@ combine_flowframes <- function(list_of_flowframes) {
 
   return(combined_flowframe)
 }
-
 
 ##############################################################################################
 # df_to_seurat
@@ -365,7 +386,7 @@ flowsom <- function(input, #seurat
     # save feature plots of this UMAP
     if (run.plot) {
       p3 <- DimPlot(input, reduction = "umap", repel = TRUE, label = TRUE,
-                    group.by = clust_name) # will automatically group by active ident
+                    group.by = clust_name, raster = FALSE) # will automatically group by active ident
       p4 <- DoHeatmap(input, features = rownames(input), group.by = clust_name) # heatmap
 
       print(p3)

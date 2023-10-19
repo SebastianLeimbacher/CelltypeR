@@ -84,7 +84,7 @@ All the samples need to be in one folder.
 
 
 ```{r, echo=FALSE}
-input_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/FlowCytometry_Data/9MBO/"
+input_path <- "/GITHUB/CelltypeR/FlowCytometry_Data/9MBO/"
 
 # for this example we are downsampling cells to run more quickly
 
@@ -486,7 +486,7 @@ Visualize the proportion of label transfer predicted cell types
 ```{r, echo=FALSE}
 plot_lab_clust(seu, seu.cluster = seu$RNA_snn_res.0.8, seu.labels = seu$seu.pred, filter_out = c("unassigned","Unassigned","Mixed"))
 ```
-Add the RFM annotations using the most frequent cell type per cluster. 
+Add the Label transfer annotations using the most frequent cell type per cluster. 
 ```{r, echo=FALSE}
 seu.ann <- get_annotation(seu, seu$RNA_snn_res.0.8,seu$seu.pred, 
                top_n = 3, filter_out = c("unassigned","Unassigned","Mixed","Mix"), Label = "SEU")

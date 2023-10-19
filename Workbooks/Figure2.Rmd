@@ -1,0 +1,361 @@
+---
+title: "Figure 2"
+output: github_document
+---
+
+
+This workbook contains:
+
+1. Pre-processing of the individual 2D cultures
+2. Create of figures in figure 2.
+
+
+#Read in the 2D data
+
+Load required libraries
+```{r}
+# set up environment / load libraries
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(CelltypeR)
+
+```
+
+Read in the live gated single cell fsc files
+
+```{r}
+input_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/FlowCytometry_Data/2Dcultures"
+
+flowset <- fsc_to_fs(input_path, downsample = "none")
+# down sample can be a number, 'none' or 'min'
+# look at file names and rename with shorter sample names
+library(flowWorkspace)  # this library has the function "sampleNames"
+sampleNames(flowset)
+
+
+
+```
+
+Rename frames in the list
+```{r}
+sampleNames(flowset) <- sampleNames(flowset) <- c("Astrocytes1","Neurons","NPC1","Oligodendrocyte-m","Astrocyte2","IPSC","NPC2","Oligodendrocyte-e")
+sampleNames(flowset)
+```
+
+
+```{r}
+plotdensity_flowset(flowset)
+flowset_biexp <- harmonize(flowset, processing = 'biexp')
+
+# we need to view the biex transform to see which measurements have two peaks
+plotdensity_flowset(flowset_biexp)
+```
+Align and retro transform, make a data frame and save a csv
+
+```{r}
+flowset_retro <- harmonize(flowset, processing = 'retro', 
+                           two_peaks = c(7,9:19),
+                       one_peak = c(1:6,8), threshold = 0.01)
+
+
+# now create the data frame from the flowset object using the CelltypeR function flowset_to_csv
+df <- flowset_to_csv(flowset_retro)
+
+write.csv(df, "2Dcells_surfaceflowset.csv")
+
+```
+
+# Create the Seurat object and cluster
+
+```{r}
+markers <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+seu <- make_seu(df, AB_vector = markers)
+Idents(seu) <- "Sample"
+levels(seu)
+celltypes <- c("Astrocytes","Neurons","NPC","Oligodendrocytes","Astrocytes","IPSC","NPC","Oligodendrocytes")
+seu <- CelltypeR::annotate(seu1, annotations = celltypes, to_label = 'Sample', annotation_name = 'Batch')
+Idents(seu) <- 'Batch'
+seu <- subset(seu, downsample = 10000)
+# note that Batch here refers to the culture types
+
+seu <- get_clusters(seu, method = "louvain", k = 25,
+                    resolution = 0.25, plots = FALSE)
+DimPlot(seu, group.by = 'RNA_snn_res.0.25', repel = TRUE, raster = FALSE, pt.size = 0.25, label = TRUE) 
+
+
+
+```
+
+Save Seurat object for later
+```{r}
+saveRDS(seu, "Seurat2DcellCultures.RDS")
+#seu <- readRDS("Seurat2DcellCultures.RDS")
+
+```
+
+Make heatmap of expression by cell type sample
+
+```{r}
+
+# this is the seurat plotting function with bar colours and scale colours assigned.
+hm <- DoHeatmap(seu, group.by = "Batch", features = markers, size= 4,slot = "scale.data", group.colors = c("dodgerblue2","bisque","seagreen3","red3","mediumpurple3"), disp.max = 2, disp.min = -1.5) + scale_fill_gradientn(colors = c("#154c79", "#eeeee4", "#e28743")) + 
+  theme(axis.text.y = element_text(size = 12))
+hm
+
+pdf("Heatmap_2DcellSamples.pdf",width =5.5, height = 4)
+hm
+dev.off()
+
+
+
+```
+
+
+UMAPS of 2D cell types
+
+```{r}
+# plot the UMAP
+
+cell.order <- rev(c("Astrocytes","IPSC","Neurons","NPC","Oligo"))
+Idents(seu) <- "Batch"
+DimPlot(seu, repel = TRUE, label = TRUE, cols = c("dodgerblue2","bisque","seagreen3","red3","mediumpurple3"), order = cell.order, shuffle = TRUE ) 
+
+
+
+pdf("kn25UMAPcelltypes2D.pdf",width =6, height = 4)
+DimPlot(seu,label = FALSE, cols = c("dodgerblue2","bisque","seagreen3","red3","mediumpurple3"),
+        order = cell.order, shuffle = TRUE) 
+dev.off()
+
+```
+
+```{r, fig.width=8}
+DimPlot(seu, repel = TRUE, label = TRUE, order = cell.order, shuffle = TRUE, split.by = "Batch", group.by = "RNA_snn_res.0.25") 
+
+Idents(seu) <- "RNA_snn_res.0.25"
+pdf("kn25UMAPcelltypes2DSplitBy.pdf",width =20, height = 4)
+DimPlot(seu, repel = TRUE, label = TRUE, order = cell.order, shuffle = TRUE, split.by = "Batch") 
+dev.off()
+Idents(seu) <- "Batch"
+pdf("kn25UMAPcelltypes2DSplitByCellColours.pdf",width =20, height = 4)
+DimPlot(seu, repel = TRUE, label = TRUE, order = cell.order, shuffle = TRUE, split.by = "Batch",cols = c("royalblue3","bisque3","springgreen4","red3","mediumpurple3")) 
+dev.off()
+
+
+```
+
+
+Visualize the clusters
+
+```{r}
+markers <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+
+for (i in markers) {
+  print(FeaturePlot(seu, features = i, min.cutoff = 'q1', max.cutoff = 'q97', label = TRUE))
+}
+
+# save figure
+pdf("kn25UMAPmarkers.pdf",width =20, height = 16)
+
+FeaturePlot(seu, features =markers, min.cutoff = 'q1', max.cutoff = 'q97', label = TRUE, raster = FALSE, ncol = 4)
+dev.off()
+
+```
+
+
+Correlation predictions
+
+```{r}
+
+reference_path <- "GITHUB/CelltypeR/ExampleOuts/RefrecneMatrices/FinalReferenceMatrix.csv"
+reference_data <- read.csv(reference_path)
+
+rownames(reference_data) <- reference_data$X
+reference_data <- reference_data %>% select(-"X")
+#
+head(reference_data)
+colnames(reference_data) <- c("Astrocytes", "Endothelial", "Epithelial", "Neurons","NPC", "OPC",  "Oligodendrocyte", "Radial Glia", "Stem Like")
+
+df_ref <- as.data.frame(t(reference_data))
+df_ref$X <- rownames(df_ref)
+
+# rows are cell types in the reference matrix and Markers are the columns
+# in the input markers are the column.  
+
+
+input_df <- read.csv("2DcellsSelectflowset.csv")
+dim(input_df)
+colnames(input_df)
+class(input_df)
+
+# the reference matrix and the test matrix need to both have the Markes as column
+# the ref matrix has a column of Cell types "X"
+# the min_corr cut-off will effect the amount of assigned cells
+
+cor1 <- find_correlation(test = input_df, reference = df_ref,
+                        min_corr = 0.35, min_diff = 0.05)
+
+# add the correlation prediction for each cell
+# thresh 0.35
+seu <- AddMetaData(object=seu, metadata=cor1$cell.label, col.name = 'cor.labels1')
+
+
+```
+
+
+```{r}
+#table(seu$cor.labels1)
+table(seu$cor.labels4)
+
+freq.cor4 <- as.data.frame(table(seu$cor.labels4))
+
+```
+
+
+Have a look at the correlations
+
+```{r, fig.width=10}
+Idents(seu) <- 'cor.labels'
+DimPlot(seu) # see all correlation predictions 
+# top correlations for each cluster
+cor.ann.035 <- get_annotation(seu, seu.cluster = seu$RNA_snn_res.0.25, 
+                          seu.label = seu$cor.labels, top_n = 3, 
+                          filter_out = c("Unknown","unknown","Mixed", 
+                                         "unassigned","Unassigned"), 
+                          Label = "CAM")
+
+# top 5 per groups
+t.lables <- as.data.frame(table(seu$RNA_snn_res.0.25, seu$cor.labels))
+  t.lables$Freq <- as.double(t.lables$Freq)
+  colnames(t.lables) <- c("Cluster", "Label","Freq")
+  top.labs <- t.lables  %>% group_by(Cluster) %>% top_n(5, Freq)
+  sort.tops <- top.labs %>% as.data.frame() %>% arrange(desc(Freq))  %>% arrange(Cluster)
+  print(sort.tops)
+  cor.ann.035
+
+  # make a bar chart of the cell type per cluster
+  plot_lab_clust(seu, seu$RNA_snn_res.0.25, seu$cor.labels)
+
+  
+  pdf("BarchartCorbyClusterThresh035.pdf", width = 8, height = 4)
+  plot_lab_clust(seu, seu$RNA_snn_res.0.25, seu$cor.labels)
+  DimPlot(seu)
+  dev.off()
+
+```
+
+
+```{r}
+
+seu <- CelltypeR::annotate(seu, annotations = cor.ann.035$CAM, to_label = "RNA_snn_res.0.25",
+                annotation_name = "CAM035")
+DimPlot(seu, group.by = "CAM035", label = TRUE)
+
+```
+
+
+Label clusters and plot UMAP again
+
+```{r}
+
+
+Idents(seu) <- "RNA_snn_res.0.25"
+
+cluster.ids2 <- c("Astrocytes","Mix","Stem Cells",
+                 "NPC","Oligo",
+                 "NPC-Radial Glia",
+                 "Neurons","Radial Glia",
+                 "Astrocytes-Stem","Epithelial-Endothelial",
+                 "Endothelial")
+
+cellorder2 <- c("Astrocytes","Astrocytes-Stem",
+               "Epithelial-Endothelial","Endothelial","Mix",
+               "Neurons",
+                "NPC","NPC-Radial Glia","Oligo",
+               "Radial Glia", "Stem Cells")
+
+
+seu <- annotate(seu, annotations = cluster.ids2, 
+  to_label = 'RNA_snn_res.0.25',
+  annotation_name = "Subgroups2")
+# plot the UMAP 
+Idents(seu) <- 'Subgroups2'
+length(levels(seu))
+
+
+#UMAP
+Idents(seu) <- 'Subgroups2'
+DimPlot(seu, repel = TRUE, label = TRUE,
+        cols = c("dodgerblue2","royalblue3",
+                 "cadetblue3","darkturquoise","wheat4",
+                 "seagreen3","red3","indianred1",
+                 "mediumpurple3","pink",
+                 "bisque"), order = rev(cellorder2), 
+        shuffle = TRUE) 
+
+
+
+pdf("kn25UMAPSubgroups2Dcells.pdf",width =6, height = 4)
+DimPlot(seu, repel = TRUE, label = FALSE,
+        cols = c("dodgerblue2","royalblue3",
+                 "cadetblue3","darkturquoise","wheat4",
+                 "seagreen3","red3","indianred1",
+                 "mediumpurple3","pink",
+                 "bisque"),
+                order = rev(cellorder2), shuffle = TRUE) 
+dev.off()
+
+
+
+```
+
+
+Mean expression per cluster
+
+```{r}
+library(data.table)
+
+
+
+cellorder2 <- c("Astrocytes","Astrocytes-Stem",
+               "Epithelial-Endothelial","Endothelial","Mix",
+               "Neurons",
+                "NPC","NPC-Radial Glia","Oligo",
+               "Radial Glia", "Stem Cells")
+
+
+cluster.ids2 <- c("Astrocytes","Mix","Stem Cells",
+                 "NPC","Oligo",
+                 "NPC-Radial Glia",
+                 "Neurons","Radial Glia",
+                 "Astrocytes-Stem","Epithelial-Endothelial",
+                 "Endothelial")
+
+
+markers <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+hm <- plotmean(plot_type = 'heatmap',seu, group = "Subgroups2", markers = markers, 
+         var_names = cluster.ids2, slot = 'scale.data',
+                     xlab = 'Cell Types', ylab = 'Markers', 
+         cluster_order = cellorder2, 
+         marker_order = rev(markers), high_colour = "darkblue",
+         mid_colour = "slateblue", low_colour = "ivory")+
+  theme(panel.border = element_blank(), 
+           panel.grid = element_blank())
+hm
+
+
+#pdf("heatmap_2DexpbySubgroup2.pdf",width = 4.5, height = 4)
+#print(hm)
+#dev.off()
+
+hm
+
+
+
+
+```
+
+
+
+

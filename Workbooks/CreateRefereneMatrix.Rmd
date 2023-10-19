@@ -1,23 +1,23 @@
 ---
 title: "R Notebook Create Reference matrix"
-output: html_notebook
+output: github_document
 ---
 
 This workbook contains:
 1. Instructions on how to make a reference matrix manually or using in house and public data.
   a) Manual input values
   b) Read values from a csv (made in excel)
-  c) Create a dataframe from Seurat objects.
+  c) Create a data frame from Seurat objects.
   d) Combine different data sets to make one reference matrix.
-  e) Save the reference matrix to read into 
+  e) Save the reference matrix to read later.
 2. Creation of the reference matrix used throughout the manuscript.
   a) Data inputs used and their sources.
   b) Combination and normalization of the inputs.
-  c) Final reference matrix.
+  c) Final reference matrix used in this manuscript for the first antibody panel.
 3. Creation of a second reference matrix with an adjusted antibody panel used for the time course analysis. 
   a) Data inputs used and their sources.
   b) Combination and normalization of the inputs.
-  c) Final reference matrix.
+  c) Final reference matrix used for the time course analysis.
 
 
 To create the reference matrix you must first obtain expression data from different sources.
@@ -75,7 +75,7 @@ ref_dataframe <- zero.one
 # we can now save the reference matrix 
 output_path <- "where/to/save/file/"   # example not a real file path
 
-output_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/"
+output_path <- "/GITHUB/CelltypeR/ExampleOuts/"
 write.csv(ref_dataframe, paste(output_path,"ManualReferenceMatrix.csv",sep = ""))
 
 
@@ -127,10 +127,11 @@ Flow cytometry data from 2D cell cultures
 # this is a csv that was created with the preprocessing workflow
 
 input_path <- "where/you/have/the/data/file/"
-input_path <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/2Dcells_surface/preprocessing/Allsamples/"
 
-# this is the complete data
-fc <- read.csv(paste(input_path,"2Dcells_surfacealigned_transformed_flowset.csv", sep = ""))
+# this is the complete data 
+# this data is available in the github
+
+fc <- read.csv(paste(input_path,"2Dcells_surface_flow.csv", sep = ""))
 
 # we now want to get the mean expression values for each antibody in each cell type
 # check what columns we have
@@ -608,6 +609,7 @@ heatmap(scMidStr,
 
 Developing Forebrain
 https://cells.ucsc.edu/?ds=human-forebraindev+sc-rna-seq
+Van Bruggen et al, Developmental cell 2022
 
 ```{r}
 input_path <- "/Users/rhalenathomas/Documents/Data/scRNAseq/PublicData/"
@@ -1804,6 +1806,9 @@ rownames(df) <-  c("CD24","NCAM1","ITGB1","FUT4",
                    "CXCR4","PROM1","CD44","PDGFRA","TH",
                    "ST3GAL2","ITGA6")
 
+#SSEA4 is a carbohydrate epitope of glycoproteins expressed during early development and is a marker of human embryonic stem cells. 17. The presence of SSEA4 synthase is an indicator of SSEA4 synthesis.
+# ST3GAL2 is the synthase gene
+
 head(df)
 colnames(df)
 
@@ -2023,9 +2028,12 @@ heatmap(z_panel2,
 
 # if some cell type need to remove the data should be z-scored again
 
+
+
 # save the panel
 output_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/"
 write.csv(z_panel2, paste(output_path,"ReferenceMatrixPanel2.csv",sep = ""))
+
 
 
 
@@ -2033,10 +2041,15 @@ write.csv(z_panel2, paste(output_path,"ReferenceMatrixPanel2.csv",sep = ""))
 
 
 
-Read in Reference matrix and plot.  Change column and AB order as needed.
+Read in Reference matrix and plot.  Change column and marker order as needed.
 
 ```{r}
 df <- read.csv("/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/ReferenceMatrixPanel2.csv")
+
+# the reference matrix for the correlation functions needs to be cell types as rows and markers as columns
+mat2 <- as.data.frame(t(df))
+write.csv(mat2, paste(output_path,"ReferenceMatrixPanel2Timecourse.csv",sep = ""))
+
 
 # we need to remove the marker column and add these are row names
 rownames(df) <- df$X

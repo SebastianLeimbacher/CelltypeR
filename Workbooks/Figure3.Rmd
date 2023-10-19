@@ -1,9 +1,22 @@
 ---
-title: "R Notebook"
-output: html_notebook
+title: "Figure 3"
+output: github_document
 ---
 
 # Figure 3
+Data processing and plots
+
+# In this workbook
+1. Read in a subset of fsc live gated single cells.
+2. Align data, create expression data frames.
+3. Create Seurat object and cluster. 
+4. Visualize expression
+5. Correlation predictions
+ a) visualize predicted expression reference matrix
+ b) visualize correlation predictions.
+ c) compare thresholds of correlations.
+6. Annotate.
+7. Train random forest classifier.
 
 ```{r}
 # set up the environment
@@ -16,44 +29,54 @@ library(CelltypeR)
 
 ```
 
-Figure 3A - predicted correlation matrix
+# Process data
 
+Read in the live gated cells in fsc files. 
+```{r}
+input_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/FlowCytometry_Data/9MBO/"
+
+flowset <- fsc_to_fs(input_path, downsample = 9000)
+# down sample can be a number, 'none' or 'min'
+
+# look at file names and rename with shorter sample names
+library(flowWorkspace)  # this library has the function "sampleNames"
+sampleNames(flowset)
+
+sampleNames(flowset) <- sampleNames(flowset) <- c("3450_0306","AIW002_0306","AJG001C_0306","3450_0317A","AIW002_0317A","AJG001C_0317A","3450_0317B","AIW002_0317B","AJG001C_0317B")
+sampleNames(flowset)
+
+
+```
+Plots to find which measures have two peaks for alignement
 
 ```{r}
-# Figure 3A 
-# Plot the reference matrix for correlation
-reference_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/FinalReferenceMatrix.csv"
-reference_data <- read.csv(reference_path)
-# the reference matrix need to be in the format cell types as rows and markers as columns
-# there is a column X with the markers
-#colnames(reference_data)
-# we need a row X with the cell type names
-# Transpose the dataframe and convert values to numeric
+flowset_biexp <- harmonize(flowset, processing = 'biexp')
 
-reference_data <- rbind(reference_data, colnames(reference_data))
-rownames(reference_data) <- reference_data$X
-reference_data <- reference_data %>% select(-"X")
-df_ref <- as.data.frame(t(reference_data))
-# make it numeric
-df_ref2 <- apply(df_ref, 2, as.numeric)
-df_ref2 <- as.data.frame(df_ref2)
-# add back the cell type column
-df_ref2$X <- df_ref$X
-colnames(df_ref2)
-rownames(df_ref2) <- df_ref2$X
-head(df_ref2)
-# Plot the reference matrix
-rownames(reference_data) <- reference_data$X
-df_ref1 <- reference_data %>% select(-"X")
-mat <- as.matrix(df_ref1)
+# we need to view the biex transform to see which measurements have two peaks
+plotdensity_flowset(flowset_biexp)
+```
+Align peaks and retrotransform
 
-hm <- heatmap(mat, 
-        Rowv = NA,  # Don't cluster rows
-        Colv = NA,  # Don't cluster columns
-        col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
-        main = "Reference Matrix")
+```{r}
+flowset_retro <- harmonize(flowset, processing = 'retro', 
+                           two_peaks = c(7:20),
+                       one_peak = c(1:6,21), threshold = 0.01)
 
-hm
+
+# now create the data frame from the flowset object using the CelltypeR function flowset_to_csv
+df <- flowset_to_csv(flowset_retro)
+write.csv(df, "MOsflowset9000subset_df.csv")
+
+```
+
+
+Make Seurat object and cluster
+
+```{r}
+AB <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+
+# create the seurat object
+seu <- make_seu(df, AB_vector = AB)
 
 ```
 
@@ -61,8 +84,23 @@ Plot with ggplot Figure 3A
 
 ```{r}
 
-colnames(mat) <- c("Astrocyte","Endothelial","Epithelial","Neuron",
+# prepare the matrix
+reference_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/ReferenceMatrices/FinalReferenceMatrix.csv"
+reference_data <- read.csv(reference_path)
+# the reference matrix need to be in the format cell types as rows and markers as columns
+# there is a column X with the markers
+#colnames(reference_data)
+# we need a row X with the cell type names
+# Transpose the dataframe and convert values to numeric
+
+rownames(reference_data) <- reference_data$X
+reference_data <- reference_data %>% select(-"X")
+colnames(reference_data) <- c("Astrocyte","Endothelial","Epithelial","Neuron",
                    "NPC","OPC","Oligo","RG","Stem")
+
+
+mat <- as.matrix(reference_data)
+
 
 marker.order <- rev(c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4"))
 # reformat df
@@ -91,7 +129,6 @@ dev.off()
 ```
 
 
-
 Calculate correlations
 
 ```{r}
@@ -106,23 +143,19 @@ head(test.df)
 cor1 <- find_correlation(test = test.df, reference = df_ref2,
                         min_corr = 0.553, min_diff = 0.05)
 
-write.csv(cor1, "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/9MBO/prepro_outsjan20-9000cells/correlations/cor9000cellsRthresh0553_june2023B.csv")
-
-cor1 <- read.csv("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/9MBO/prepro_outsjan20-9000cells/correlations/cor9000cellsRthresh0553_june2023B.csv")
-
+write.csv(cor1, "cor9000cellsRthresh55.csv")
 
 # see how the cells mostly would be assigned if not for the threshold
 cor2 <- find_correlation(test = test.df, reference = df_ref2,
                         min_corr = 0.1, min_diff = 0.05)
 
-write.csv(cor2, "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/9MBO/prepro_outsjan20-9000cells/correlations/cor9000cellsRthresh01_june2023.csv")
+write.csv(cor2, "cor9000cellsRthresh01.csv")
 
-head(cor2)
 
 cor3 <- find_correlation(test = test.df, reference = df_ref2,
                         min_corr = 0.35, min_diff = 0.05)
 
-write.csv(cor3, "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/9MBO/prepro_outsjan20-9000cells/correlations/cor9000cellsRthresh035_june2023.csv")
+write.csv(cor3, "cor9000cellsRthresh35.csv")
 
 
 ```
@@ -168,12 +201,13 @@ freq.cor3.df <- as.data.frame(p.cor3[[1]])
 
 
 ```
+
 Adjust pair of cell types plots to plot mixes with higher cell counts
 Figures S4,S5,S6 
 
 ```{r}
 # Define the threshold number of pairs
-df <- cor1 # threshold 0.553
+df <- cor1
 threshold <- 8
 
 # Filter the double-labeled cells
@@ -304,18 +338,22 @@ Figure 3 clustering
 This is with the subsample of 9000 cells per hMO
 Figure 3D and E
 
+
 ```{r}
 # read in the seurat objects
-seu <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/9MBO/prepro_outsjan20-9000cells/Figure3/cluster_parameters/retro-louv-moreparm/retrotransLouvainSeuratObject60.Rds")
-AB <- c("CD24","CD56","CD71","CD29","CD15", "CD184","CD133", "GLAST","CD44","AQP4","HepaCAM","CD140a", "O4" )
-
+seu <- get_clusters(seu, method = "louvain",
+                         df_input = df,
+                         k = 60,
+                         pcdim = 1:12,
+                         resolution = 0.7,
+                         plots = FALSE)
 
 # the highest Rand Index are res = 0.1, 7 clusters, res = 0.15, 9 clusters.  Both very low RI std.
 # the high RI with low std is 0.3 and 0.7, cluster numbers also have low std 
 # from bootstrap 100X
 # annotation is easier with 18-25 clusters 
 
-# seu <- RunUMAP(seu,spread = 1, min.dist = 0.05, dims = 1:12)
+seu <- RunUMAP(seu, spread = 1, min.dist = 0.05, dims = 1:12)
 
 DimPlot(seu, reduction = "umap", label = TRUE, group.by = 'RNA_snn_res.0.7', repel = TRUE)
 
@@ -323,36 +361,23 @@ DimPlot(seu, reduction = "umap", label = TRUE, group.by = 'RNA_snn_res.0.7', rep
 
 ```
 
-Add different correlation assignments and visualize on UMAP from the low threshold for CAM
+Add different correlation assignments from the 0.553 threshold and visualize on UMAP from the low threshold for CAM
 
 ```{r, fig.width=5}
 
-seu <- AddMetaData(object=seu, metadata= cor2$cell.label, col.name = 'cor.labels01')
+seu <- AddMetaData(object=seu, metadata= cor1$cell.label, col.name = 'cor.labels55')
 
 # see the labels added
 #unique(seu$cor.labels01)
 
-# plot the cluster predictions
+#plot the cluster predictions
 #plot_lab_clust(seu, seu$RNA_snn_res.0.7, seu$cor.labels01)
 
-DimPlot(seu, group.by = 'cor.labels01', label = TRUE) + theme(legend.position = "none")
-
-# removing the combined cell labels that are low frequency will improve visualization
-# Check if the cell type has a frequency less than 500 and assign new label accordingly
-
-# Check if the cell type has a frequency less than 500 and assign new label accordingly
-cor2$cell.label.ft <- ifelse(cor2$cell.label %in% freq.cor2.df$cell.label[freq.cor2.df$Freq < 500], "few", cor2$cell.label)
-
-
-seu <- AddMetaData(object=seu, metadata= cor2$cell.label.ft, col.name = 'cor.labels01ft')
-unique(seu$cor.labels01ft)
-plot_lab_clust(seu, seu$RNA_snn_res.0.7, seu$cor.labels01ft)
-
-DimPlot(seu, group.by = 'cor.labels01ft', label = TRUE, 
-        label.size = 8, repel = TRUE) + theme(legend.position = "none")
+DimPlot(seu, group.by = 'cor.labels55', label = TRUE) + theme(legend.position = "none")
 
 
 ```
+
 Visualize CAM with the signifance 0.553 threshold
 
 ```{r, fig.width=5}
@@ -374,22 +399,22 @@ Visualize CAM assignments with threshold R = 0.35
 
 seu <- AddMetaData(object=seu, metadata= cor3$cell.label, col.name = 'cor.labels035')
 
-# see the labels added
-#unique(seu$cor.labels01)
-
-# plot the cluster predictions
-#plot_lab_clust(seu, seu$RNA_snn_res.0.7, seu$cor.labels01)
-
 DimPlot(seu, group.by = 'cor.labels035', label = TRUE) + theme(legend.position = "none")
 
 # removing the combined cell labels that are low frequency will improve visualization
 # Check if the cell type has a frequency less than 500 and assign new label accordingly
+# Calculate cell frequencies
+cell.freq <- table(seu$cor.labels035)
 
-# Check if the cell type has a frequency less than 500 and assign new label accordingly
-cor3$cell.label.ft <- ifelse(cor3$cell.label %in% freq.cor3.df$cell.label[freq.cor3.df$Freq < 200], "few", cor3$cell.label)
+# Filter cell labels with at least 400 cells
+selected_labels <- names(cell.freq[cell.freq >= 500])
 
+df.meta <- as.data.frame(seu$cor.labels035)
+# Create a new column 'cell.label.ft' with labels over 500 cells, and 'NA' for others
+df.meta$cell.label.ft <- df.meta$`seu$cor.labels035`
+df.meta$cell.label.ft <- ifelse(df.meta$cell.label.ft %in% selected_labels, df.meta$cell.label.ft, NA)
 
-seu <- AddMetaData(object=seu, metadata= cor3$cell.label.ft, col.name = 'cor.labels035ft')
+seu <- AddMetaData(object=seu, metadata= df.meta$cell.label.ft, col.name = 'cor.labels035ft')
 unique(seu$cor.labels035ft)
 
 DimPlot(seu, group.by = 'cor.labels035ft', label = TRUE, 
@@ -447,7 +472,7 @@ for (i in AB) {
 ```
 
 
-
+Annotate the cells
 
 ```{r}
 
@@ -461,12 +486,11 @@ cluster.ids <- c("Unassigned","Glial-lineage","Neurons 1","Radial Glia 1",
                  "Endothelial","Oligodendrocytes","OPC","Stem cell like",
                  "NPC")
 
-seu <- annotate(seu, annotations = cluster.ids, to_label = "RNA_snn_res.0.7",
+seu <- Celltype::annotate(seu, annotations = cluster.ids, to_label = "RNA_snn_res.0.7",
                 annotation_name = "labels"
                 )
 
-
-
+Idents(seu) <- "labels"
 # there are 16 levels in the cell type annotations with major groups
 
 # change the order of the cell types on the legend of the umap
@@ -487,8 +511,7 @@ clust.colours <- c("chocolate2","darkorange","pink","plum1","lightpink3",
 
 # Figure 3D UMAP with annotated clusters
 # use PDF for figure for correct resolution
-
-setwd("~/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure3/")
+DimPlot(seu, order = rev(cell.type.order), cols = clust.colours, shuffle = TRUE, raster=FALSE,pt.size = 0.1, label = FALSE) 
 
 pdf("UMAPlabelled9000.noraster.pdf",width = 9, height = 5)
  DimPlot(seu, order = rev(cell.type.order), cols = clust.colours, shuffle = TRUE, raster=FALSE,pt.size = 0.1, label = FALSE) +
@@ -516,13 +539,6 @@ dev.off()
 
 ```
 
-```{r}
-saveRDS(seu,"/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Seu9000lablesJune23.RDS")
-
-seu <-readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Seu9000lablesJune23.RDS") 
-
-```
-
 Train a Random Forest classifier
 
 ```{r}
@@ -536,10 +552,9 @@ DimPlot(seu, group.by = "labels")
 
 
 
-
 Train a Random Forest classifier 
 
-Using too few features (mytry), too low of starting nodes (tree complexity), too few nodes (max nodes) and too few trees can all lead to over fitting.  The num_folds variable provides a cross validation within the parameter search to help avoid overfitting. 
+Using too few features (mytry), too low of starting nodes (tree complexity), too few nodes (max nodes) and too few trees can all lead to over fitting.  The num_folds variable provides a cross validation within the parameter search to help avoid over fitting. 
 
 ```{r}
 
@@ -551,15 +566,13 @@ markers <- rev(c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAS
 # To force an assignment I am removing the "Unassigned" cells in this model.
 
 Idents(seu) <- "labels"
-#seu.sub <- subset(seu, idents = "Unassigned", invert = TRUE)
-#dim(seu.sub)
+seu.sub <- subset(seu, idents = "Unassigned", invert = TRUE)
 
-# Remove the "Unassigned" level from the Idents metadata
-#Idents(seu.sub) <- Idents(seu.sub)[Idents(seu.sub) != "Unassigned"]
-# Update the labels in the subset object
-#seu.sub$labels <- Idents(seu.sub)
 
-#table(seu.sub$labels)
+#Remove the "Unassigned" level from the Idents metadata
+Idents(seu.sub) <- Idents(seu.sub)[Idents(seu.sub) != "Unassigned"]
+#Update the labels in the subset object
+seu.sub$labels <- Idents(seu.sub)
 
 
 seu.sub <- subset(seu, downsample = 1000)
@@ -580,82 +593,10 @@ rf <- RFM_train(seurate_object = seu.sub,
 
 ```
 
-
+Save the model
  
 ```{r}
 saveRDS(rf,"/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/RFM/MBOsub_trainedRFMnewlabelsAu17.Rds")
 ```
  
  
-
-```{r}
-
-# check the predictions
-Idents(seu.r) <- "labels"
-rfm.pred.ref <- RFM_predict(seu.r, rf2, markers)
-head(rfm.pred.ref)
-unique(rfm.pred.ref)
-table(rfm.pred.ref)
-
-seu.r <- AddMetaData(object=seu.r, metadata=rfm.pred.ref$Prediction, col.name = 'rfm.labels')
-dftrue <- as.data.frame(table(as.character(seu.r$labels)))
-dfpred <- as.data.frame(table(as.character(seu.r$rfm.labels)))
-colnames(dfpred)
-df2 <- dfpred %>% 
-   add_row(Var1 = "Glial-lineage", Freq=0)
-df2
-df_merge <- merge(dftrue, df2, by = "Var1", all = TRUE)
-colnames(df_merge) <- c("Celltype","Truth","Prediction")
-df_merge$Precision <- df_merge$Prediction / df_merge$Truth
-
-# Print the result
-print(df_merge)
-
-
-# confusion matrix 
-table_by_celltype <- table(Prediction = seu.r$rfm.labels, Truth = seu.r$labels)
-df_table <- as.data.frame(table_by_celltype)
-
-
-heatmap(table_by_celltype, Rowv = NA, Colv = NA)
-
-
-```
-
-```{r}
-# check the predictions
-Idents(seu.sub) <- "labels"
-rfm.pred.ref <- RFM_predict(seu.sub, rf2, markers)
-table(rfm.pred.ref)
-seu.sub <- AddMetaData(object=seu.sub, metadata=rfm.pred.ref$Prediction, col.name = 'rfm.labels')
-dftrue <- as.data.frame(table(as.character(seu.sub$labels)))
-dfpred <- as.data.frame(table(as.character(seu.sub$rfm.labels)))
-
-df_merge <- merge(dftrue, dfpred, by = "Var1", all = TRUE)
-colnames(df_merge) <- c("Celltype","Truth","Prediction")
-df_merge$Precision <- df_merge$Prediction / df_merge$Truth
-
-# Print the result
-print(df_merge)
-
-
-# confusion matrix 
-table_by_celltype <- table(Prediction = seu.sub$rfm.labels, Truth = seu.sub$labels)
-df_table <- as.data.frame(table_by_celltype)
-
-heatmap(table_by_celltype, Rowv = NA, Colv = NA)
-
-
-```
-
-
-
-Save the model
-
-```{r}
-
-saveRDS(rf2, "TrainedRFMAug10_noglialineage.Rds")
-
-
-```
-
