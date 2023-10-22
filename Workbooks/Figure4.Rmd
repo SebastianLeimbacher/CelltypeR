@@ -356,7 +356,7 @@ cluster.ids <- c("Glia-lineage","Radial Glia 1a","Radial Glia 1",
 # note Neurons 3 is NPC
 
 
-seu.q <- annotate(seu.q, annotations = cluster.ids, 
+seu.q <- CelltypeR::annotate(seu.q, annotations = cluster.ids, 
                   to_label= "clusters", 
                   annotation_name = "Annotations")
 
@@ -394,8 +394,6 @@ clust.colours <- c("chocolate2","darkorange",
                    "tomato3","burlywood3")
  
 
-setwd("~/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure4")
-
 pdf("UMAP.all.groups.pdf",width = 9, height = 4.5)
 DimPlot(seu.q, cols = clust.colours, shuffle = TRUE, 
         raster=FALSE, pt.size = 0.1, label = FALSE, 
@@ -419,11 +417,11 @@ DimPlot(seu.q, cols = clust.colours, shuffle = TRUE,
 Make a dot plot of expression in full dataset
 
 
-```{r, fig.width=2}
+```{r, fig.width=4}
 # Figure 4B
-#library(data.table)
-#Idents(seu.q) <- "Annotations"
-#annotations <- levels(seu.q)
+
+Idents(seu.q) <- "Annotations"
+annotations <- levels(seu.q)
 
 
 
@@ -436,13 +434,11 @@ dp <- plotmean(plot_type = 'dotplot',seu = seu.q, group = 'Annotations',
 
 
 # save 
-setwd("~/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure4")
 
-pdf("DotPlotCelltypes.pdf",width = 8, height = 5)
-print(dp)
-dev.off()
+#pdf("DotPlotCelltypes.pdf",width = 8, height = 5)
+#print(dp)
+#dev.off()
 
-dp
 
 
 
@@ -500,7 +496,7 @@ unique(seu.q$Batch)  # change the meta data to each in turn.
 
 Run split UMAP - split by iPSC line
 
-```{r, fig.width=5}
+```{r, fig.width=10}
 
 # cell order from above
 # colours from above
@@ -510,19 +506,19 @@ Run split UMAP - split by iPSC line
 seu.q$IPSC <- factor(seu.q$IPSC, levels = c("AIW002","AJG001","3450"))
 
 
+# save the plot
 
-setwd("~/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure4")
+#pdf("UMAPsplitbyIPSCline.pdf",width = 20, height = 4.5)
+#DimPlot(seu.q, cols = clust.colours, shuffle = TRUE, 
+#        raster=FALSE, pt.size = 0.1, label = FALSE, 
+#        group.by = 'Annotations',
+#        order = rev(cell.order), split.by = "IPSC") +
+#theme(legend.text = element_text(size=16), axis.title.y = element_text(size=16), 
+#         axis.title.x = element_text(size=16), axis.text.y = element_text(size =16),
+#        axis.text.x = element_text(size =16))
+#dev.off()
 
-pdf("UMAPsplitbyIPSCline.pdf",width = 20, height = 4.5)
-DimPlot(seu.q, cols = clust.colours, shuffle = TRUE, 
-        raster=FALSE, pt.size = 0.1, label = FALSE, 
-        group.by = 'Annotations',
-        order = rev(cell.order), split.by = "IPSC") +
-theme(legend.text = element_text(size=16), axis.title.y = element_text(size=16), 
-         axis.title.x = element_text(size=16), axis.text.y = element_text(size =16),
-        axis.text.x = element_text(size =16))
-dev.off()
-
+# see the plot
 DimPlot(seu.q, cols = clust.colours, shuffle = TRUE, 
         raster=FALSE, pt.size = 0.1, label = FALSE, 
         group.by = 'Annotations',
@@ -551,10 +547,10 @@ seu.q$Celltypes <- factor(seu.q$Celltypes, levels = c("Astrocytes 1", "Astrocyte
 
 proportionplots(seu.q,seu.var = seu.q$IPSC, seu.lable = seu.q$Celltypes, groups = "IPSC", my_colours = clust.colours)
 
-setwd("~/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure4")
-pdf("PercentCelltypesIPSC.pdf", width = 6, height = 4)
-proportionplots(seu.q,seu.var = seu.q$IPSC, seu.lable = seu.q$Celltypes, groups = "IPSC", my_colours = clust.colours)
-dev.off()
+# save the plot
+#pdf("PercentCelltypesIPSC.pdf", width = 6, height = 4)
+#proportionplots(seu.q,seu.var = seu.q$IPSC, seu.lable = seu.q$Celltypes, groups = "IPSC", my_colours = #clust.colours)
+#dev.off()
 
 ```
 
@@ -566,7 +562,7 @@ proportionplots(seu.q,seu.var = seu.q$Days, seu.lable = seu.q$Celltypes, groups 
 
 proportionplots(seu.q,seu.var = seu.q$Batch, seu.lable = seu.q$Celltypes, groups = "hMO Batch", my_colours = clust.colours)
 
-proportionplots(seu.q,seu.var = seu.q$Ex.date, seu.lable = seu.q$Celltypes, groups = "Experiment Date", my_colours = clust.colours)
+proportionplots(seu.q,seu.var = seu.q$ExDate, seu.lable = seu.q$Celltypes, groups = "Experiment Date", my_colours = clust.colours)
 
 ```
 
@@ -575,7 +571,7 @@ Proportion tests
 
 ```{r}
 
-#library(scProportionTest)
+library(scProportionTest)
 # create a propotion test object
 
 Idents(seu.q) <- "Celltypes"
@@ -603,11 +599,6 @@ permutation_plot(prop_test) +  theme(axis.text.x = element_text(size = 12),
   legend.title = element_text(size = 14))
 dev.off()
 
-
-
- 
-
-setwd("~/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure4")
 
 prop_test <- permutation_test(
 	prop_test, cluster_identity = "Celltypes",
@@ -674,59 +665,17 @@ dev.off()
 ```
 
 
-Proportionality test for other variables
-```{r}
-# prop_test prepared above
-setwd("~/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure4")
-# compare batch
-prop_test <- permutation_test(
-	prop_test, cluster_identity = "Celltypes",
-	sample_1 = "A", sample_2 = "B",
-	sample_identity = "Batch"
-)
-
-
-# save the plot 
-png("prp.test.AvB_batch.png", width = 600, height = 300)
-permutation_plot(prop_test) +  theme(axis.text.x = element_text(size = 12),
-        axis.text.y = element_text(size = 12),
-        axis.title = element_text(size = 14),    # Adjust axis title size
-  legend.text = element_text(size = 12),   # Adjust legend text size
-  legend.title = element_text(size = 14))
-dev.off()
-
-# Exdate
-prop_test <- permutation_test(
-	prop_test, cluster_identity = "Celltypes",
-	sample_1 = "0306", sample_2 = "0317",
-	sample_identity = "ExDate"
-)
-
-# save the plot 
-png("prp.test.compareDate.png", width = 600, height = 300)
-permutation_plot(prop_test) +  theme(axis.text.x = element_text(size = 12),
-        axis.text.y = element_text(size = 12),
-        axis.title = element_text(size = 14),    # Adjust axis title size
-  legend.text = element_text(size = 12),   # Adjust legend text size
-  legend.title = element_text(size = 14))
-dev.off()
-
-
-
-```
-
 
 
 Heat map grouped byIPSC line
 
-
 ```{r}
-library(ggplot2)
-library(dplyr)
-library(tidyr)
 library(tibble)  # For rownames_to_column function
+library(scales) # to set scale in heatmap
 # Sample data
-# Assuming df is your data frame with the structure you described
+
+df <- as.data.frame(AverageExpression(seu.q, group.by = c("Celltypes","IPSC"), slot = 'scale.data'))
+
 
 # Extract just the marker names from the column names
 marker_names <- gsub("^RNA\\.", "", colnames(df))
@@ -744,7 +693,6 @@ heatmap_data <- heatmap_data %>%
   mutate(Celltype = gsub("^RNA\\.", "", Celltype))  # Remove "RNA." from Celltypes
 
 
-
 # Specify the order of Celltypes and IPSC
 celltype_order <- c("Astrocytes.1", "Astrocytes.2",
                      "Radial.Glia.1","Radial.Glia.1a","Radial.Glia.2",
@@ -759,6 +707,10 @@ ipsc_order <- c("AIW002", "AJG001", "3450")  # Define the order of IPSC
 # Reorder the levels of Celltypes and IPSC
 heatmap_data$Celltypes <- factor(heatmap_data$Celltype, levels = celltype_order)
 heatmap_data$IPSC <- factor(heatmap_data$IPSC, levels = ipsc_order)
+
+heatmap_data <- heatmap_data %>%
+  group_by(Celltype, IPSC) %>%
+  mutate(Expression = scale(Expression))
 
 # Create the heatmap
 ggplot(heatmap_data, aes(x = interaction(IPSC, factor(Celltype, 
@@ -780,7 +732,6 @@ Save the heatmap grouped by iPSC line and Celltype
 ```{r}
 # heatmap
 
-setwd("~/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure4")
 pdf("heatmap.ave.line.cell.pdf", width = 13, height = 4)
 ggplot(heatmap_data, aes(x = interaction(IPSC, factor(Celltype, 
                                                       levels = celltype_order)), 
@@ -834,9 +785,8 @@ anv <- test.stats1[['ANOVA']]
 tk <- test.stats1[['TukeyHSD']]
 
 # save the results. 
-library(writexl)
-setwd("~/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure4")
-write_xlsx(test.stats1, path = "ANOVAcompareIPSC.xlsx")
+#library(writexl)
+#write_xlsx(test.stats1, path = "ANOVAcompareIPSC.xlsx")
 
 
 
@@ -921,14 +871,14 @@ test.stats6 <- run_stats(input_df= df.for.stats, group_cols = c("Sample", "CellT
 # overall effects
 test.stats6[['ANOVA']]
 
-setwd("~/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure4")
-write.csv(test.stats6[['ANOVA']], "ANOVA2maineffectsIPSCMarker.csv")
+
+#write.csv(test.stats6[['ANOVA']], "ANOVA2maineffectsIPSCMarker.csv")
 
 names(test.stats6$TukeyHSD) <- c("IPSC", "Marker","IPSC-Marker",
                                  "Interactions_ IPSC",
                                  "Interactions_ Marker")
 
-write_xlsx(test.stats6$TukeyHSD, "ANOVA2celltypesMarkersIPSC.xlsx")
+#write_xlsx(test.stats6$TukeyHSD, "ANOVA2celltypesMarkersIPSC.xlsx")
 # see the relevant interactions Tukey's results
 df <- as.data.frame(test.stats6$TukeyHSD$`Interactions_ IPSC`)
 head(df)
@@ -940,37 +890,4 @@ df_sig
 
 
 ```
-
-If we use all cells as n do we have more significant differences?
-
-
-Plot Protein expression by iPSC line.
-
- test new stats function to fix loop by "CellType" requirement
- 
-```{r}
-test.stats <- run_stats2(input_df= df.for.stats, group_cols = c("Sample", "CellType","Marker","IPSC","Batch"),
-                     value_col = "value",
-                     stat_type = "ANOVA", id1 = 'IPSC', 
-                     id2 = NULL, use_means = TRUE,
-                     loop_by = "CellType")
-
-
-
-```
- test syntax
- 
-```{r}
-
-df_means <- get_means(df.for.stats,group_cols = c("Sample", "CellType","Marker","IPSC","Batch"), value_col = "value")
-
-loop_by = "CellType"
-
-var_list <- unique(df_means[[loop_by]])
-
-id1 = "IPSC"
-one_way <- aov(expression ~ df_means[[id1]], data = df_means)
-
-```
- 
 

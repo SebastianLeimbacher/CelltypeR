@@ -1,0 +1,972 @@
+---
+title: "Figure 7"
+output: github_document
+---
+
+1. Data preprocessing: put all timepoints and replicates into one folder
+a. Read FlowJo files into R.
+b. Create a data frame with intensity measurements for each marker for all          samples within the experiment to be analyzed.  
+- downsample taking a 2000 cells from each sample to speed up computation.
+c. Harmonize data 
+d. Create dataframe
+e. Create a Seurat object
+
+2. Cluster data
+3. Annotate clusters with cell types.
+a. Predict cell types by correlation matrix
+b. Visualize expression by cluster for manual annotation
+c. Add annotations to Seurat object
+c. Train RandomForest classifier.
+
+4. Reprocess with all cell in samples
+a. preprocess
+b. cluster
+c. annotate (now seurat label transfer and random forest can be used.)
+
+5. Compare cell type proportions and expression levels across the time course. 
+
+```{r}
+# load necessary libraries 
+library(Seurat)
+library(dplyr) 
+library(ggplot2)
+library(CelltypeR)
+
+```
+
+
+# Preprocessing
+
+Read in the flow data
+This data should be the gated live cells.  
+All samples need to be in one folder.
+Here we have 
+
+```{r}
+
+input_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/FlowCytometry_Data/AIW_timeCourse"
+
+# 1.a Read in FlowJo Files 
+
+# down sample to take cells from each of 4 time points and 4 replicates
+flowset <- fsc_to_fs(input_path, downsample = 2000)
+# down sample can be a number, 'none' or 'min'
+
+# look at file names and rename with shorter sample names
+sampleNames(flowset) # function in flowCore
+
+```
+
+Rename samples with shorter names
+
+```{r}
+sampleNames(flowset) <- sampleNames(flowset) <- c("AIW_150_R1","AIW_150_R2","AIW_150_R3","AIW_150_R4",
+  "AIW_30_R1","AIW_30_R2","AIW_30_R3","AIW_30_R4",
+  "AIW_60_R1","AIW_60_R2","AIW_60_R3","AIW_60_R4",
+  "AIW_100_R1","AIW_100_R2","AIW_100_R3","AIW_100_R4"
+                                                  )
+sampleNames(flowset)
+```
+
+Harmonize data to remove batch or technical variation
+
+This requires us to look and see where there are two peaks to align. We need to visualize the peaks of the transformed data before aligning.
+
+```{r}
+
+# we can decided what level of processing to choose with the argument 'processing'
+# biexp only applies a biexponential transformation
+# align applies biexp transform and then aligns peaks
+# retro (default), transforms, aligns and then reverse transforms
+flowset_biexp <- harmonize(flowset, processing = 'biexp')
+# we can visualize the peaks to see where there are two peaks for alignment
+
+# we need to enter the column index for which peaks to align, the alignment for one or two peaks is not the same. 
+#plotdensity_flowset(flowset)
+
+p1 <- plotdensity_flowset(flowset_biexp) # to see the peaks
+p1
+# if there are two peaks assign as two peaks and one peak as one in the code chunk below
+
+flowset_align <- harmonize(flowset, processing = 'align', 
+                           two_peaks = c(9:11,15,17:21,25:42),
+                       one_peak = c(1:8,12:14,16,24,43), threshold = 0.01)
+
+flowset_retro <- harmonize(flowset, processing = 'retro', 
+                           two_peaks = c(9:11,15,17:21,25:42),
+                       one_peak = c(1:8,12:14,16,24,43), threshold = 0.01)
+
+df <- flowset_to_csv(flowset_retro)
+
+
+
+```
+Create the Seurat object 
+
+```{r}
+
+# antibody features in order to appear on the plots
+AB <- c("TH","CD24","CD56","CD29","CD15","CD184","CD133","SSEA4","CD44","CD49f","CD140a")
+
+df_select <- df %>% select(c("TH","CD24","CD56","CD29","CD15","CD184","CD133","SSEA4","CD44","CD49f","CD140a","Sample"))
+
+seu <- make_seu(df_select, AB_vector = AB)
+
+```
+
+
+# Cluster
+Explore conditions
+
+```{r}
+# note the dimensions (number of PC to include needs to be one less than the number in the antibody panel)
+explore_param(input = seu, 
+                          cluster_method = "louvain", 
+                          df_input = df.input, 
+                          flow_k = NULL, 
+                          pheno_lou_kn = c(80,120,200), 
+                          lou_resolution = c(0.6), 
+                          pcdim = 1:10,
+                          run.plot = TRUE, 
+                          run.stats = FALSE, 
+                          save_to = NULL)
+# this function does not add the clustering to the seurat object it is to explore and run stats.  If you choose save = output_path then you will save a seurat object with the clustering, one for each kn.
+
+
+```
+
+
+After checking parameters run cluster function to make add the clustering information into the 
+
+```{r}
+
+seu <- get_clusters(seu, method = "louvain",
+                         df_input = df.input,
+                         k = 80,
+                         resolution = c(1),
+                         plots = TRUE,
+                         save_plots = FALSE)
+
+
+```
+
+
+# Annotate clusters
+1. Visualization for manual annotation. - output by clustering function
+2. CAM (Correlation assignment model) - requires reference matrix
+3. RFM (Random Forest Model) - requires annotated matching flow dataset
+4. Seurat label transfer - requires annotated matching flow data in a seurat object
+
+Visualize expression on UMAP and with heat maps
+
+```{r}
+
+AB <- c("TH","CD24","CD56","CD29","CD15","CD184","CD133","SSEA4","CD44","CD49f","CD140a")
+# the cluster labels will match the active ident
+Idents(seu) <- "RNA_snn_res.1"
+# this will let us see one at at time
+for (i in AB) {
+  print(FeaturePlot(seu, features = i, min.cutoff = 'q1', max.cutoff = 'q97', label = TRUE))
+}
+
+
+```
+
+Visualize your reference matrix
+
+```{r}
+df <- read.csv("GITHUB/CelltypeR/ExampleOuts/ReferenceMatrices/ReferenceMatrixPanel2.csv")
+
+# we need to remove the marker column and add these are row names
+rownames(df) <- df$X
+df <- df %>% select(-"X")
+# heatmap function take a matix
+mat <- as.matrix(df)
+
+heatmap(mat, 
+        Rowv = NA,  # Don't cluster rows
+        Colv = NA,  # Don't cluster columns
+        col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
+        main = "Reference Matrix")
+
+
+
+```
+
+```{r, fig.width=3}
+colnames(seu@meta.data)
+DimPlot(seu, group.by = "RNA_snn_res.1", label=TRUE, label.size = 6)
+DimPlot(seu, group.by = "Days_in_FD", label=TRUE, label.size = 6)
+DimPlot(seu, group.by = "Replicate", label=TRUE, label.size = 6)
+
+
+```
+
+
+Visualization of expression values by heatmap
+
+```{r}
+
+# summary heat map
+# use function plotmean
+# we need to know how many clusters we have.  They will be index 0 to n-1
+# you need to pick the length to annotate
+
+length(unique(seu$RNA_snn_res.1))
+# 15
+# if we want to plot by cluster we need a vector of from 0 to the n-1 clusters
+cluster.num <- c(0:17)
+
+plotmean(plot_type = 'heatmap',seu = seu, group = 'RNA_snn_res.1', markers = AB, 
+                     var_names = cluster.num, slot = 'scale.data', xlab = "Cluster",
+         ylab = "Antibody")
+
+
+```
+
+```{r, fig.width=3}
+
+DimPlot(seu, group.by = "Sample")
+```
+
+
+Add annotations based on expression
+
+```{r}
+# predict cell type from looking at expression patterns
+myann <- c("precursors","neuralblast","neuron1","astrocyte1","stem-like",
+           "epithelial","astrocyte-early","astrocyte2","DAneuron","RG-astro",
+           "DAneuron2",
+           "Neuron_early","RG","Glia","NPC","OPC","neuralstem","stem-like2")
+
+man.ann <- data.frame(Cluster = c(0:17), MyAnn = myann)
+man.ann
+
+man.ann$Cluster <- as.factor(man.ann$Cluster)
+man.ann$MyAnn <- as.factor(man.ann$MyAnn)
+man.ann
+
+```
+
+Predict cell annotations with CAM (Correlations assignment method)
+
+```{r}
+
+reference_path2 <- "/GITHUB/CelltypeR/ExampleOuts/ReferenceMatrices/ReferenceMatrixPanel2Timecourse.csv"
+reference_data2 <- read.csv(reference_path2)
+# the reference matrix need to be in the format cell types as rows and markers as columns
+# there is a column X with the cell type names
+df1 <- reference_data2
+rownames(df1) <- df1$X # add row names (these are the markers)
+df1 <- df1 %>% select(-"X") # remove the column with the marker names
+
+cor <- find_correlation(test = input_df, 
+                             reference = df1, 
+                             min_corr = 0.35, 
+                             min_diff = 0.05)
+
+# creates a dataframe with cor1 cor2 and predicted cell type label
+
+cor2 <- find_correlation(test = input_df, 
+                             reference = df1, 
+                             min_corr = 0.55, 
+                             min_diff = 0.05)
+
+
+```
+
+Visualize the CAM results
+
+```{r}
+#dim(cor)
+#colnames(cor)
+
+plot_corr(cor, threshold = 0.35, min_cells = 400)
+
+```
+
+```{r}
+plot_corr(cor2, threshold = 0.55, min_cells = 400)
+```
+
+
+```{r, fig.width= 4}
+
+# add the correlation predictions to the meta data
+seu <- AddMetaData(object=seu, metadata=cor$cell.label, col.name = 'cor.labels3505')
+# see the labels added
+#unique(seu$cor.labels3505)
+
+# add the correlation predictions to the meta data
+seu <- AddMetaData(object=seu, metadata=cor2$cell.label, col.name = 'cor.labels5505')
+# see the labels added
+#unique(seu$cor.labels5505)
+
+# plot the cluster predictions
+plot_lab_clust(seu, seu$RNA_snn_res.1, seu$cor.labels5505)
+
+```
+
+Run get annotations function to return a vector of annotation in the order of the clusters.
+
+```{r}
+
+cor.ann <- get_annotation(seu, seu.cluster = seu$RNA_snn_res.1, 
+                          seu.label = seu$cor.labels3505, top_n = 3, 
+                          filter_out = c("Unknown","unknown","Mixed","unassigned","Unassigned"), 
+                          Label = "CAM3505")
+cor.ann
+dim(cor.ann)
+
+unique(cor.ann$CAM)
+length(cor.ann$CAM)
+
+```
+
+```{r, fig.width= 3}
+
+ann <- c("NPCDA1", "Astrocyte1","Neuron1", "Astrocyte2",
+         "RG1","RG2", "Astrocyte3", "Astrocyte4",
+         "NeuronDA","Astrocyte5","NPCDA2","Neuron2",
+         "RadialGliaDiv","RG3","Neuron4","opc", "RG4", "StemCell")
+
+
+seu <- annotate(seu,annotations = cor.ann$CAM3505, 
+                to_label = "RNA_snn_res.1", 
+                annotation_name = "CAM35")
+
+
+DimPlot(seu, group.by = "CAM35", label = TRUE, label.size = 6)
+
+
+```
+
+
+```{r, fig.width=3}
+cor.ann <- get_annotation(seu.t, seu.cluster = seu.t$RNA_snn_res.1, 
+                          seu.label = seu.t$cor.labels5505, top_n = 3, 
+                          filter_out = c("Unknown","unknown","Mixed","unassigned","Unassigned"), 
+                          Label = "CAM5505")
+cor.ann
+dim(cor.ann)
+
+unique(cor.ann$CAM5505)
+length(cor.ann$CAM5505)
+
+seu <- annotate(seu,annotations = cor.ann$CAM5505, 
+                to_label = "RNA_snn_res.1", 
+                annotation_name = "CAM5505")
+
+
+DimPlot(seu, group.by = "CAM5505", label = TRUE)
+
+
+```
+
+
+
+We do not have a trained Random Forest model or a labelled Seurat object to compare for this antibody set. We can test RFM prediction and Seurat transfer using the older organoids with the original panel.However only the overlapping antibodies can be used. 
+
+```{r}
+# which antibodies overlap between the two panels
+
+panel1 <-  c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+
+panel2 <- c("TH","CD24","CD56","CD29","CD15","CD184","CD133","SSEA4","CD44","CD49f","CD140a")
+
+overlap_Markers <- intersect(panel1, panel2)
+print(overlap_Markers)
+  
+  
+```
+
+Random Forest Model predictions with only overlapping markers.
+
+```{r}
+
+# you must have a saved trained model from a data object annotated from the same markers
+# I have trained a model with only the overlapping antibodies
+
+overlabling_markers <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD44", "CD140a")
+
+# Random Forest Model was trained on HPC.  However with so few features the predictive ability will be limited. 
+
+rf <- readRDS("/RFM_all9hMOsOverlapAB.RDS")
+
+
+rfm.pred <- RFM_predict(seu.t, rf)
+
+
+seu.t <- AddMetaData(object=seu.t, metadata=rfm.pred$Prediction, col.name = 'rfm.labels')
+
+# check that the data is added 
+table(seu.t$rfm.labels)
+
+
+
+```
+
+Get the annotation by cluster for the RFM
+
+```{r}
+
+rfm.ann <- get_annotation(seu.t, seu.t$RNA_snn_res.1,seu.t$rfm.labels, 
+               top_n = 3, filter_out = c("unknown","Unknown","Mixed","Mix", "unassigned"), Label = "RFM")
+```
+
+Plot RFM predictions
+
+```{r}
+
+plot_lab_clust(seu.t, seu.cluster = seu.t$RNA_snn_res.1, seu.labels = seu.t$rfm.labels, filter_out = c("unknown","Unknown","Mixed"))
+
+
+```
+
+Predicting cell types with Seurat label transfer using anchors
+
+
+```{r}
+
+# takes in a seurat object with the labels added 
+# makes a dataframe with the count of predicted labels for each cluster
+# input seurat object with the predicted labels in the meta data
+# input the clusters meta data slot to be labels
+
+#need reference data object with labels
+seu.r<- readRDS("All9MOannaoteAug.RDS") 
+
+Idents(seu.r) <- 'Celltypes'
+seu.r <- subset(seu.r, downsample = 5000)
+
+overlabling_markers <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD44", "CD140a")
+seu.t <- seurat_predict(seu.t, seu.r, refdata = seu.r$Celltypes,
+                      ref_id = 'Celltypes', down.sample = "none", markers = overlabling_markers)
+
+DimPlot(seu.t, group.by = "seu.pred", reduction = "umap")
+
+```
+
+
+
+```{r}
+
+# plot the seurat anchor predictions
+# get the annotation table for the seurat anchor predictions 
+
+plot_lab_clust(seu.t, seu.t$RNA_snn_res.1, seu.t$seu.pred)
+
+# to not filter anything use c()
+seu.ann <- get_annotation(seu.t, seu.t$RNA_snn_res.1, seu.t$seu.pred, 
+               top_n = 3, filter_out = c("Unknown","Mixed","unassigned",
+                                         "Unassigned"), Label = "Seurat")
+
+
+
+```
+
+```{r, fig.width=3}
+# add the annotations from the seurat predictions
+
+seu.t <- annotate(seu.t, annotations = seu.ann$Seurat, 
+                to_label = "RNA_snn_res.1", 
+                annotation_name = "Seu")
+
+
+DimPlot(seu.t, group.by = "Seu", label = TRUE, label.size = 6)
+
+  
+```
+
+
+Make a table with the top predicted cell by cluster
+
+```{r}
+an.list <- list(cor.ann, rfm.ann, seu.ann)
+df.an <- annotate_df(an.list)
+df.an
+write.csv(df.an, "annotationPredsTop1.csv")
+
+```
+
+Get a consensus of cluster annotations, Add the annotations to the seurat object
+
+
+```{r}
+
+# make a list of data frames
+# all the dataframes need to be as.factor
+ann.list <- list(cor.ann,rfm.ann,seu.ann.ft, man.ann)
+
+# annotate the seurat object
+
+seu <- cluster_annotate(seu, ann.list = ann.list, 
+                        annotation_name ="CellType", 
+                        to_label = "RNA_snn_res.1")
+
+DimPlot(seu, group.by = "CellType")
+
+# unfortunately for the consensus to work we need the cell type names to be identical
+
+```
+
+Add annotations
+
+```{r}
+
+seu <- annotate(seu, annotations = new_annotations, to_label = "RNA_snn_res.1", annotation_name = "CellTypes")
+
+DimPlot(seu, group.by = "CellTypes", label = TRUE, repel = TRUE)
+
+new_annotations <- c("earlyDA-NPC","RG1a-astro","Neurons1","Astrocytes1-RG1a",
+                     "stem-like-RG2","RG3","RG1","Astrocytes2",
+                     "DAneurons1","RG-astro","earlyDA-NPC2","NPC",
+                     "RGdiv-NPC-RG1a","RG1a-astro1", "Neurons1b","OPC-like",
+                     "precursors","Neurons2")
+
+seu.t <- annotate(seu.t, annotations = new_annotations, to_label = "RNA_snn_res.1", annotation_name = "CelltypesNew")
+
+DimPlot(seu.t, group.by = "CelltypesNew", label = TRUE)
+
+new_annotations <- c("DA-NPC","Astrocytes 1","Neurons 1","RG1a-Astrocytes 1",
+                     "RadialGlia 2","RadialGlia 3","RadialGlia 1","Astrocytes 2",
+                     "DA-neurons 1","RG1a-Astrocytes 1","DA-NPC","Neurons 1",
+                     "Stem-cell-like","RadialGlia 1a", "NPC","OPC-like",
+                     "RG-oligo","Neurons 2")
+
+seu.t <- annotate(seu.t, annotations = new_annotations, to_label = "RNA_snn_res.1", annotation_name = "CelltypesMainNew")
+
+DimPlot(seu.t, group.by = "CelltypesMainNew", label = TRUE)
+
+```
+
+
+```{r}
+colnames(seu.t@meta.data)
+```
+
+# Compare groups
+
+We first need to add the variables into the seurat object that we want to compare.
+
+```{r}
+# see the sample names and order to add the meta data
+
+# set the ident to sample names
+Idents(seu.t) <- 'Sample'
+levels(seu.t)
+
+Age <- c("155","155","155","150",
+         "30","30","30","30",
+         "60","60","60","60",
+         "100","100","100","100")
+Replicate <- c("R1","R2","R3","R4",
+               "R1","R2","R3","R4",
+               "R1","R2","R3","R4",
+               "R1","R2","R3","R4")
+
+
+# vector with the new names - you need this vector from me
+cluster.ids <- Age
+
+names(cluster.ids) <- levels(seu)    # get the levels
+seu <- RenameIdents(seu, cluster.ids) # rename  
+seu$Days_in_FD <- Idents(seu)   # add a new dataslot
+
+# Replicate
+Idents(seu) <- "Sample"
+cluster.ids <- Replicate
+# vector with the new names - you need this vector from me
+
+names(cluster.ids) <- levels(seu)    # get the levels
+seu <- RenameIdents(seu, cluster.ids) # rename  
+seu$Replicate <- Idents(seu)   # add a new dataslot
+
+# change the levels in the time course so that are in the order of actual time for plotting
+
+# rename with exact time points
+
+Idents(seu.t) <- "Days_in_FD"
+levels(seu.t)
+days <- c("38","63","98","155")
+
+
+seu.t <- annotate(seu.t, annotations = days, to_label = "Days_in_FD", 
+                annotation_name = "Days_in_FD")
+
+seu.t$Days_in_FD <- factor(seu.t$Days_in_FD, levels = c("38","63","98","155"))
+
+Idents(seu.t) <- "Days_in_FD"
+DimPlot(seu.t)
+
+```
+
+See the data split by days in FD
+
+```{r}
+DimPlot(seu.t, split.by = "Days_in_FD", ncol = 2, label = TRUE)
+DimPlot(seu.t, split.by = "Replicate", ncol = 2, label = TRUE, label.size = 2)
+```
+
+```{r}
+# set up colours to match Fig 4,5 where possible
+
+
+cell.order <- c("Astrocytes 1","Astrocytes 2","RG1a-Astrocytes 1","RadialGlia 1",
+                "RadialGlia 1a","RadialGlia 2","RadialGlia 3",
+                "DA-neurons 1","Neurons 1","Neurons 2","DA-NPC","NPC",
+                "OPC-like",
+                "RG-oligo",
+                "Stem-cell-like")
+
+# add TH specific
+clust.colours <- c("chocolate2",# Astrocytes 1
+                   "darkorange", # Astrocytes 2
+                   "salmon",  # RG1a-Astrocytes
+                   "pink", # RG1
+                   "deeppink",# RG1a
+                   "plum1", #RG2
+                   "lightpink3",# RG3
+                   "slateblue", #"DA-Neuron"
+                   "mediumpurple1",# neurons 1
+                   "purple",# Neurons2
+                   #"mistyrose2", #glialineage
+                   #"steelblue3",# epithelial
+                   #"deepskyblue", # endothelial
+                    "thistle2",   #DA-NPC
+                   "plum3", # NPC
+                   #"mediumslateblue", # Neural lineage
+                   # "seagreen3",#Oligo
+                   # "olivedrab4", # OPC
+                   "darkseagreen3",#OPC like
+                   "yellowgreen", # RG-oligo
+                   "tomato3",# stem like - NPC-RG-div
+                   "burlywood3" #extra 
+                   )
+
+```
+
+UMAP with colours
+
+```{r}
+
+DimPlot(seu.t, cols = clust.colours, shuffle = TRUE, 
+        raster=FALSE, pt.size = 0.1, label = TRUE, 
+        group.by = "CelltypesMainNew",
+        order = rev(cell.order)) +
+theme(legend.text = element_text(size=16), axis.title.y = element_text(size=16), 
+         axis.title.x = element_text(size=16), axis.text.y = element_text(size =16),
+        axis.text.x = element_text(size =16))
+
+# save the plot
+pdf("UMAPtimeCourse.pdf",width = 9, height = 4.5)
+DimPlot(seu.t, cols = clust.colours, shuffle = TRUE, 
+        raster=FALSE, pt.size = 0.1, label = FALSE, 
+        group.by = "CelltypesMainNew",
+        order = rev(cell.order)) +
+theme(legend.text = element_text(size=16), axis.title.y = element_text(size=16), 
+         axis.title.x = element_text(size=16), axis.text.y = element_text(size =16),
+        axis.text.x = element_text(size =16))
+dev.off()
+
+
+```
+
+Plots some variables to look for differences between groups
+
+```{r}
+
+# add colours from above
+# add new cell order 
+
+seu.t$CelltypesMainNew <- factor(seu.t$CelltypesMainNew, levels = cell.order)
+
+
+# same thing with custom colours
+proportionplots(seu.t,seu.var = seu.t$Days_in_FD, seu.lable = seu.t$CelltypesMainNew, groups = "Days_in_FD", my_colours = clust.colours)
+
+# save the plot
+pdf("BarcharttimeCourse.pdf",width = 5, height = 4)
+proportionplots(seu.t,seu.var = seu.t$Days_in_FD, seu.lable = seu.t$CelltypesMainNew, groups = "Days_in_FD", my_colours = clust.colours)
+dev.off()
+
+
+```
+
+Look at cell type proportions across time and replicates
+
+```{r}
+# order the samples
+unique(seu.t$Sample)
+neworder <- c("AIW_30_R1","AIW_30_R2","AIW_30_R3","AIW_30_R4",
+              "AIW_60_R1","AIW_60_R2", "AIW_60_R3","AIW_60_R4",
+              "AIW_100_R1","AIW_100_R2","AIW_100_R3", "AIW_100_R4",
+              "AIW_150_R1", "AIW_150_R2", "AIW_150_R3", "AIW_150_R4")
+
+seu.t$Sample <- factor(seu.t$Sample, levels = neworder)
+
+proportionplots(seu.t,seu.var = seu.t$Sample, seu.lable = seu.t$CelltypesMainNew, groups = "Days in FD and replicates", my_colours = clust.colours)
+
+#unique(seu.t$sample)
+setwd("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/TimeCourseAIW/Analysis/Figure7/")
+# save the plot
+pdf("BarcharttimeCourseSamples.pdf",width = 6, height = 4)
+proportionplots(seu.t,seu.var = seu.t$Sample, seu.lable = seu.t$CelltypesMainNew, groups = "Days in FD and replicates", my_colours = clust.colours)
+dev.off()
+
+```
+
+Another visualization over time
+
+```{r}
+df <- as.data.frame(proportions(table(seu.t$CelltypesMainNew,seu.t$Days_in_FD,seu.t$Replicate)))
+colnames(df) <- c("Celltypes","DaysFD","Replicate","Proportion")
+
+head(df)
+
+df$DaysFD <- as.numeric(as.character(df$DaysFD))
+
+# Create the plot
+ggplot(df, aes(x = DaysFD, y = Proportion *1000, color = Celltypes)) +
+  geom_point() +
+  stat_summary(data = mean_df, aes(x = DaysFD, y = MeanProportion *1000, group = Celltypes), 
+               fun = "mean", geom = "line", linetype = "solid", size = 1) +
+  labs(title = "Mean Proportion vs. DaysFD",
+       x = "DaysFD",
+       y = "Percent of total cells",
+       color = "Celltypes") +
+  scale_color_manual(name = "Celltypes", values = clust.colours) +
+  scale_x_discrete() + # Set x-axis limits
+  facet_wrap(~Celltypes, scales = "free_y") + # Split by facets
+   theme(strip.text.x = element_text(size =8,angle = 0, hjust = 0.5, vjust = 0, margin = margin(b = 6)))
+
+pdf("LinePlotPercentbyTime.pdf", width = 10, height = 7)
+ggplot(df, aes(x = DaysFD, y = Proportion *1000, color = Celltypes)) +
+  geom_point() +
+  stat_summary(data = mean_df, aes(x = DaysFD, y = MeanProportion *1000, group = Celltypes), 
+               fun = "mean", geom = "line", linetype = "solid", size = 1) +
+  labs(title = "Mean Proportion vs. DaysFD",
+       x = "DaysFD",
+       y = "Percent of total cells",
+       color = "Celltypes") +
+  scale_color_manual(name = "Celltypes", values = clust.colours) +
+  scale_x_discrete() + # Set x-axis limits
+  facet_wrap(~Celltypes, scales = "free_y") + # Split by facets
+   theme(strip.text.x = element_text(size =8,angle = 0, hjust = 0.5, vjust = 0, margin = margin(b = 6)))
+dev.off()
+
+
+unique(df$DaysFD)
+
+ 
+```
+
+
+```{r}
+
+# anovoa on proportions n=4 replicates
+# independent variable is Days in culture with 4 levels
+df <- as.data.frame(proportions(table(seu.t$CelltypesMainNew,seu.t$Days_in_FD,seu.t$Replicate)))
+colnames(df) <- c("Celltypes","DaysFD","Replicate","Proportion")
+
+two_way <- aov(Proportion ~  Celltypes * DaysFD, data = df)
+output <- summary(two_way)
+        # now the posthoc test
+tukey <- TukeyHSD(two_way)
+
+
+Anova2 <- as.data.frame(output[[1]])
+interaction_df <- as.data.frame(tukey[[3]])
+### filter to get the interactions that are interesting
+
+# affect of time 
+time_df <- as.data.frame(tukey$DaysFD)
+cell_df <- as.data.frame(tukey$Celltypes)
+# Assuming df is your dataframe with contrast names in row names
+# Create a logical vector indicating whether the cell types match in each row
+matches_celltypes <- grepl("^([^:]+):\\d+-\\1:\\d+", rownames(interaction_df))
+
+# Filter the dataframe to keep only rows where cell types match
+filtered_df <- as.data.frame(interaction_df[matches_celltypes, ])
+
+# View the filtered dataframe
+filtered_df
+df <- filtered_df
+# add columns for the celltypes and time points
+df$Celltype <- sub(":.*", "", rownames(df))
+df$time1 <- as.integer(sub(".*:", "", rownames(df)))
+df$time2 <- as.integer(sub(".*:", "", sub("-.*", "", rownames(df))))
+
+
+# Filter the dataframe to keep rows where "p adj" <= 0.05
+sig_df <- as.data.frame(df[df$`p adj` <= 0.05, ])
+
+results.list <- list("anova" = Anova2, "Tukey_DaysFD" = time_df, "Tukey_Celltypes" = cell_df, 
+                     "Tukey_interaction" = df, "TukeySigInteraction" = sig_df)
+
+write_xlsx(results.list, path = "ANOVA2TimeCellsProportion.xlsx")
+
+
+
+```
+
+Proportion test
+
+```{r}
+library(scProportionTest)
+
+Idents(seu.t) <- "CelltypesMainNew"
+prop_test <- sc_utils(seu.t)
+
+# set up the comparison
+
+# need to compare separately
+prop_test <- permutation_test(
+	prop_test, cluster_identity = "CelltypesMainNew",
+	sample_1 = "30", sample_2 = "60",
+	sample_identity = "Days_in_FD"
+)
+
+
+# make the plot
+permutation_plot(prop_test)
+
+pdf("prp30vs60allreps.pdf", width = 7, height = 4)
+permutation_plot(prop_test) +  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(size = 14),    # Adjust axis title size
+  legend.text = element_text(size = 12),   # Adjust legend text size
+  legend.title = element_text(size = 14))
+dev.off()
+
+prop_test <- permutation_test(
+	prop_test, cluster_identity = "CelltypesMainNew",
+	sample_1 = "60", sample_2 = "100",
+	sample_identity = "Days_in_FD"
+)
+permutation_plot(prop_test)
+
+pdf("prp60vs100allreps.pdf", width = 7, height = 4)
+permutation_plot(prop_test) +  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(size = 14),    # Adjust axis title size
+  legend.text = element_text(size = 12),   # Adjust legend text size
+  legend.title = element_text(size = 14))
+dev.off()
+
+prop_test <- permutation_test(
+	prop_test, cluster_identity = "CelltypesMainNew",
+	sample_1 = "100", sample_2 = "150",
+	sample_identity = "Days_in_FD"
+)
+permutation_plot(prop_test)
+
+pdf("prp100vs150allreps.pdf", width = 7, height = 4)
+permutation_plot(prop_test) +  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(size = 14),    # Adjust axis title size
+  legend.text = element_text(size = 12),   # Adjust legend text size
+  legend.title = element_text(size = 14))
+dev.off()
+
+
+
+```
+
+
+Proportion test by replicate
+
+```{r}
+
+unique(seu.t$Sample)
+
+prop_test <- permutation_test(
+	prop_test, cluster_identity = "CelltypesMainNew",
+	sample_1 = "AIW_30_R1", sample_2 = "AIW_60_R1",
+	sample_identity = "Sample"
+)
+
+permutation_plot(prop_test)
+
+
+prop_test <- permutation_test(
+	prop_test, cluster_identity = "CelltypesMainNew",
+	sample_1 = "AIW_30_R2", sample_2 = "AIW_60_R1",
+	sample_identity = "Sample"
+)
+
+permutation_plot(prop_test)
+
+prop_test <- permutation_test(
+	prop_test, cluster_identity = "CelltypesMainNew",
+	sample_1 = "AIW_30_R3", sample_2 = "AIW_60_R1",
+	sample_identity = "Sample"
+)
+
+permutation_plot(prop_test)
+
+
+prop_test <- permutation_test(
+	prop_test, cluster_identity = "CelltypesMainNew",
+	sample_1 = "AIW_30_R4", sample_2 = "AIW_60_R1",
+	sample_identity = "Sample"
+)
+
+permutation_plot(prop_test)
+
+```
+
+
+
+```{r}
+# Load the data
+
+# Load the tidyr package if not already loaded
+# install.packages("tidyr")  # Uncomment and run if you haven't installed it
+
+library(tidyr)
+df <- as.data.frame(table(seu.t$CelltypesMainNew,seu.t$Days_in_FD,seu.t$Replicate))
+colnames(df) <- c("Celltypes","DaysFD","Replicate","Freq")
+# Pivot the data
+# Pivot the data
+fdata <- pivot_wider(df, names_from = DaysFD, values_from = Freq)
+# Get unique cell types
+unique_celltypes <- unique(df$Celltypes)
+
+# Initialize an empty data frame to store results
+results_df <- data.frame(Celltype = character(0), ChiSquare = numeric(0), P_Value = numeric(0))
+
+# Loop through each unique cell type and perform chi-square test
+for (celltype in unique_celltypes) {
+  subset_df <- df[df$Celltypes == celltype, ]
+  chisq_result <- chisq.test(subset_df$Freq)
+  
+  # Append the results to the data frame
+  results_df <- rbind(results_df, data.frame(
+    Celltype = celltype,
+    ChiSquare = chisq_result$statistic,
+    P_Value = chisq_result$p.value
+  ))
+}
+
+# Print the results
+print(results_df)
+
+```
+
+Multinomial Logistic Regression with Replicates
+
+```{r}
+library(nnet)
+
+df <- as.data.frame(table(seu.t$CelltypesMainNew,seu.t$Days_in_FD,seu.t$Replicate))
+colnames(df) <- c("Celltypes","DaysFD","Replicate","Freq")
+# Assuming df is your data frame with cell type proportions for each sample
+# Replicates are in the "Replicate" column
+model <- multinom(Celltypes ~ DaysFD + Replicate, data = df)
+summary(model)
+
+
+
+```
+

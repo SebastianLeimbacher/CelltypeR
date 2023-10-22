@@ -25,8 +25,6 @@ c. annotate (now seurat label transfer and random forest can be used.)
 
 5. Compare cell type proportions and expression levels across the time course. 
 
-
-
 ```{r}
 # load necessary libraries 
 library(Seurat)
