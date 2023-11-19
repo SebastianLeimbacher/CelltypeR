@@ -1,6 +1,6 @@
 ---
 title: "scRNAseq data processing"
-output: github_document
+output: html_notebook
 ---
 
 Samples were run in triplicate using Hashtag sequencing. 
@@ -307,46 +307,69 @@ DimPlot(seu.sc, group.by = "Subtypes", label = FALSE)
 ```
 
 
+Read in annotated object
+
+```{r}
+output_path <- "/Users/rhalenathomas/Documents/Projects_Papers/PhenoID/ForFigures/scRNA/"
+seu.sc <- readRDS(paste(output_path,"Labelled4PopsmergedJan62022.RDS",sep=""))
+colnames(seu.sc@meta.data)
+
+
+```
+
+
 Make a heatmap
 
 ```{r}
+library(Seurat)
+library(ggplot2)
+
+
 
 # some DA classic marker
 # some neuronal markers
-# some 
 PD_poulin = c("TH","SLC6A3","SLC18A2","SOX6","NDNF","SNCG","ALDH1A1","CALB1","TACR2","SLC17A6","SLC32A1","OTX2","GRP","LPL","CCK","VIP")
+DoHeatmap(seu.sc, features = PD_poulin, group.by = "Cell_Type2") + ggtitle("DA markers")
+DotPlot(seu.sc, features = PD_poulin, group.by = 'Cell_Type2') + ggtitle("DA markers") +
+  theme(axis.text.x = element_text(angle = 90))
+DotPlot(seu.sc, features = "TH", group.by = 'Cell_Type2') + ggtitle("DA markers") +
+  theme(axis.text.x = element_text(angle = 90))
 
-#likely too many
+# many cell types a few markers
 ft <- c("COL3A1","FABP5","HPD","RAB3B","TPBG","TTR","SOX2","ASCL1","CP","GRIA2",
         "MGP","SPARCL1","TPH1","TFPI1","CY1B1","NEAT1","PTN","RPL41","TOP2A","VCAN")
 
-# to change the cell type order
-Idents(seu.sc) <- 'Cell_Subtype_Markers'
+DoHeatmap(seu.sc, features = ft, group.by = "Cell_Type2", slot = 'scale.data') + ggtitle("Multiple cell type Markers")
+DotPlot(seu.sc, features = ft, group.by = "Cell_Type2") +
+  theme(axis.text.x = element_text(angle = 90)) + ggtitle("Multiple cell type Markers")
 
 
-seu.sc$Cell_Subtype_Markers <- factor(seu.sc$Cell_Subtype_Markers, levels = sample.order)
+# neurons and TH 
+feature_list = c("MAP2","NCAM1","CD24","GRIA2","GRIN2B","GAD1",
+                 "GAD2","GABRA1","GABRB2","TH","ALDH1A1","LMX1B",
+                 "NR4A2","CORIN","CALB1","KCNJ6","CXCR4","ITGA6",
+                 "SLC1A3","CD44","AQP4","S100B", "PDGFRA","OLIG2",
+                 "MBP","CLDN11","VCAM1")
 
-#seu.sc <- ScaleData(seu.sc)
-#DoHeatmap(seu.sc, features = PD_poulin, group.by = 'Cell_Subtype_Markers', slot = 'scale.data')
-DotPlot(seu.sc, features = ft, group.by = 'Cell_Subtype_Markers') +
-  theme(axis.text.x = element_text(angle = 90))
+DoHeatmap(seu.sc, features = feature_list, group.by = "Cell_Type2", slot = 'scale.data') + ggtitle("Neuron and DA neuron and other cell type markers")
+DotPlot(seu.sc, features = feature_list, group.by = "Cell_Type2") +
+  theme(axis.text.x = element_text(angle = 90)) + ggtitle("Neuron and DA neuron markers and other cell type markers")
 
-# these are not very helpful markers 
-# need to reverse sample order for heatmaps
-DoHeatmap(seu.sc, features = ft, group.by = 'Cell_Subtype_Markers')
 
-feature_list = c("MAP2","NCAM1","CD24","GRIA2","GRIN2B",,"GAD1","GAD2","GABRA1","GABRB2","TH","ALDH1A1","LMX1B","NR4A2","CORIN","CALB1","KCNJ6","CXCR4","ITGA6","SLC1A3","CD44","AQP4","S100B", "PDGFRA","OLIG2","MBP","CLDN11","VCAM1")
-"SOX9"
+# neuron markers and TH 
 feature_list <- c("RBFOX3","GRIN2B","GAD1","GAD2","GABRA1","GABRB2","TH")
+DoHeatmap(seu.sc, features = feature_list, group.by = "Cell_Type2", slot = 'scale.data') + ggtitle("Neuron markers and TH")
+DotPlot(seu.sc, features = feature_list, group.by = "Cell_Type2") +
+  theme(axis.text.x = element_text(angle = 90)) + ggtitle("Neuron markers and TH")
 
+# NPC, early neuron, Glia
 feature_list <- c("SLC1A3", "PAX6", "SOX2", "PDGFD", "GLI3", "STMN2", "NEUROD6", "VIM", "HES1")
+feature_list <- c("RBFOX3","GRIN2B","GAD1","GAD2","GABRA1","GABRB2","TH")
+DoHeatmap(seu.sc, features = feature_list, group.by = "Cell_Type2", slot = 'scale.data') + ggtitle("NPC, early neuron, Glia")
+DotPlot(seu.sc, features = feature_list, group.by = "Cell_Type2") +
+  theme(axis.text.x = element_text(angle = 90)) + ggtitle("NPC, early neuron, Glia")
 
-DotPlot(seu.sc, features = feature_list, group.by = 'Cell_Subtype_Markers') +
-  theme(axis.text.x = element_text(angle = 90))
 
-# these are not very helpful markers 
-# need to reverse sample order for heatmaps
-DoHeatmap(seu.sc, features = feature_list, group.by = 'Cell_Subtype_Markers')
 
 
 ```
@@ -357,36 +380,30 @@ Save pdf
 
 ```{r}
 
+# Cell type makers 
 feature_list = c("TH","PAX6","OTX2","MAP2","NCAM1","CD24","GRIA2","GABBR1",
                  "VIM","SLC1A3","SOX2","HES1","NES","S100B","SOX9"
                  )
+
+DoHeatmap(seu.sc, features = feature_list, group.by = "Cell_Type2", slot = 'scale.data') + ggtitle("Cell type Markers")
+DotPlot(seu.sc, features = feature_list, group.by = "Cell_Type2") +
+  theme(axis.text.x = element_text(angle = 90)) + ggtitle("Cell type Markers")
 
 feature_list.d = c("PAX6","VIM","SLC1A3","SOX2","HES1","NES","OTX2",
                  "MAP2","NCAM1","CD24","GRIA2","GABBR1","S100B","SOX9"
                  ) 
 
+# sub type markers 
+
 DotPlot(seu.sc, features = feature_list.d, group.by = 'Cell_Subtype_Markers') +
-  theme(axis.text.x = element_text(angle = 90))
+  theme(axis.text.x = element_text(angle = 90))+ ggtitle("Subtype Markers")
 
 DotPlot(seu.sc, features = "TH", group.by = 'Cell_Subtype_Markers') +
-  theme(axis.text.x = element_text(angle = 90))
+  theme(axis.text.x = element_text(angle = 90)) + ggtitle("Subtype Markers")
 # these are not very helpful markers 
 # need to reverse sample order for heatmaps
 
-sample.order.r <- rev(sample.order)
 
-seu.sc$Cell_Subtype_Markers <- factor(seu.sc$Cell_Subtype_Markers, levels = sample.order.r)
-
-# save the dotplots
-pdf(paste(output_path,"DotPlotCellSubtypesOct17.pdf"))
-DotPlot(seu.sc, features = feature_list.d, group.by = 'Cell_Subtype_Markers') +
-  theme(axis.text.x = element_text(angle = 90))
-dev.off()
-
-pdf(paste(output_path,"DotPlotTHbysubtypesOct17.pdf"))
-DotPlot(seu.sc, features = "TH", group.by = 'Cell_Subtype_Markers') +
-  theme(axis.text.x = element_text(angle = 90))
-dev.off()
 
 ```
 
