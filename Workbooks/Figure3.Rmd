@@ -68,6 +68,26 @@ df <- flowset_to_csv(flowset_retro)
 write.csv(df, "MOsflowset9000subset_df.csv")
 
 ```
+Example plots pre and post alignment
+
+```{r, fig.width=5}
+channels_to_plot <- c("FJComp-RL1-A", "FJComp-VL5-A", "FJComp-VL6-A")
+
+# Assuming 'flowset_align' is your flowSet object
+
+pbiex <- plotdensity_flowset(flowset_biexp, sample_include = "all", select_channels = channels_to_plot)
+paligned <- plotdensity_flowset(flowset_align, sample_include = "all", select_channels = channels_to_plot)
+
+
+
+pbiex 
+paligned 
+
+```
+
+
+
+
 
 
 Make Seurat object and cluster

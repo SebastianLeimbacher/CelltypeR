@@ -135,34 +135,45 @@ harmonize <-  function(flowset, processing = 'retro',
 #' @import ggridges
 #' @importFrom ggridges geom_density_ridges
 
-plotdensity_flowset <- function(flowset, nsample_include = "all") {
+plotdensity_flowset <- function(flowset, sample_include = "all", select_channels = "all") {
   # Create the data frame
   df <- melt(lapply(as.list(flowset@frames), function(x) { x = as.data.frame(x@exprs) }))
+  # makes a df with variable (channel names), value (FC value), L1 (sample names)
+  print("full df")
+  print(dim(df))
 
-  # Count the number of unique samples
-  nsamples <- length(unique(df$L1))
-  if(nsample_include != "all") {
-  # Check if there are more than the number to include samples
-  if(nsamples > nsample_include) {
-    # Select the first 9 unique samples
-    samples_to_plot <- df %>%
-      distinct(L1) %>%
-      head(nsample_include)
+  # filter samples
+  if ("all" %in% sample_include) {
+    print("all samples were selected")
+  } else {
     # Filter the data frame to include only the selected samples
     df <- df %>%
-      filter(L1 %in% samples_to_plot$L1)
+      filter(L1 %in% sample_include)
   }
+
+  # select the channels
+  if ("all" %in% select_channels) {
+    print("all channels were selected")
+  } else {
+    print("not all channels were selected")
+    df <- df %>%
+      filter(variable %in% select_channels)
   }
+  print("filtered df")
+  print(dim(df))
+
   # make the plot
-  ggplot(df, aes(x = value, y = L1)) +
+  plot <- ggplot(df, aes(x = value, y = L1)) +
     geom_density_ridges(aes(fill = L1), alpha = 0.4, verbose = FALSE) +
-    facet_wrap(~variable) +
+    facet_wrap(~variable, scales = "free_y", dir = "h") +
     theme_light() +
-    guides(fill = FALSE)+
-    theme(axis.text.y = element_blank())  # Remove y-axis labels
+    guides(fill = FALSE) +
+    theme(axis.text.y = element_text(hjust = 0))  # Move y-axis labels to the left
+
+
+
+  return(plot)
 }
-
-
 
 ###### function called by fsc_to_df
 
