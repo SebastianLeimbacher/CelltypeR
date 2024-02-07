@@ -1,0 +1,1324 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+library(speckle)
+library(speckle)
+library(limma)
+library(ggplot2)
+
+```
+
+
+```{r}
+
+
+# get the seurat object
+# Four AIW batchs shown in Figure 5B
+
+seu <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure5/CombinedABCD.RDS")
+
+colnames(seu@meta.data)
+unique(seu$Sample)
+unique(seu$orig.ident)
+unique(seu$Batch)
+unique(seu$Celltypes) # lables in the figure 
+
+# Run propeller testing for cell type proportion differences between the two 
+# groups
+ANOVA <- propeller(x = seu, clusters = seu$Celltypes, sample = seu$Sample, 
+group = seu$Batch, transform="asin")
+
+ANOVA2 <- propeller(x = seu, clusters = seu$Celltypes, sample = seu$Sample, 
+group = seu$Batch)
+
+ANOVA
+ANOVA2
+
+# There are two transformation options to be used, the transformed values are what are compared.  They give very different results in this case
+
+```
+
+See the results with the arcsin transformation
+
+```{r}
+Compare4batches <- ANOVA[,7:8]
+print(Compare4batches)
+```
+Now we can see that Stem cells, Astrocytes 2, Radial Glia 3 are significant with adjusted p value.
+
+
+
+Visualize the results compare across all 4 samples.
+
+```{r}
+# Assuming `ANOVA` is your data frame containing the results
+# Replace `ANOVA` with your actual data frame name
+
+# Select relevant columns and add a column for the Cell Type based on row names
+plot_data <- ANOVA[, c("BaselineProp", "PropMean.A", "PropMean.B", "PropMean.C", "PropMean.D")]
+plot_data$Cell_Type <- rownames(plot_data)
+
+# Convert columns to numeric
+numeric_columns <- c("BaselineProp", "PropMean.A", "PropMean.B", "PropMean.C", "PropMean.D")
+plot_data[, numeric_columns] <- lapply(plot_data[, numeric_columns], as.numeric)
+
+# Calculate the differences between Baseline and each PropMean
+plot_data_diff <- plot_data[, -6] - plot_data$BaselineProp
+
+# Create a new data frame with Cell Type and differences for each PropMean
+diff_data <- data.frame(Cell_Type = plot_data$Cell_Type, plot_data_diff)
+
+# Melt the data for plotting
+diff_data_long <- tidyr::gather(diff_data, key = "Variable", value = "Difference", -Cell_Type)
+
+# Add FDR values to the melted data
+diff_data_long$FDR <- ANOVA$FDR[match(diff_data_long$Cell_Type, rownames(ANOVA))]
+
+# Plotting using ggplot
+
+ggplot(diff_data_long, aes(x = Difference, y = Cell_Type, color = Variable)) +
+  geom_point(size = 3, alpha = 0.7) +  # Adjust alpha here
+  geom_text(data = subset(diff_data_long, FDR < 0.05), 
+            aes(x = 0.1, label = "*"), 
+            hjust = -0.2, vjust = 0.5, size = 4, color = "black") +  # Add black star at x = 0.1 if FDR < 0.05
+  labs(title = "Difference in Proportions from Baseline",
+       x = "Difference from Baseline",
+       y = "Cell Type",
+       color = "Variable") +
+  theme_minimal()
+
+### don't show baseline
+
+ggplot(diff_data_long, aes(x = Difference, y = Cell_Type, color = Variable)) +
+  geom_point(data = subset(diff_data_long, Variable != "BaselineProp"), 
+             size = 3, alpha = 0.7) +  # Exclude baseline from geom_point
+  geom_text(data = subset(diff_data_long, FDR < 0.05), 
+            aes(x = 0.1, label = "*"), 
+            hjust = -0.2, vjust = 0.5, size = 4, color = "black") +  # Add black star at x = 0.1 if FDR < 0.05
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray") +  # Add vertical line at x = 0
+  labs(title = "Difference in Proportions from Baseline",
+       x = "Difference from Baseline",
+       y = "Cell Type",
+       color = "Variable") +
+  theme_minimal()
+
+
+
+```
+Stars are placed where differences are signficant.
+
+
+
+
+# Compare pairwise four different Batches using propellar
+
+```{r}
+library(Seurat)
+Idents(seu) <- "Batch"
+AandB <- subset(seu, idents = c("A","B"))
+levels(AandB)
+
+# proportion test
+
+prpAvsBarc <- propeller(x = AandB, clusters = AandB$Celltypes, sample = AandB$Sample, 
+group = AandB$Batch, transform="asin")
+
+prpAvsBarc
+
+prpAvsB <- propeller(x = AandB, clusters = AandB$Celltypes, sample = AandB$Sample, 
+group = AandB$Batch)
+prpAvsB
+
+# no differences between A and B
+
+
+```
+
+
+
+C and D
+
+```{r}
+Idents(seu) <- "Batch"
+CandD <- subset(seu, idents = c("C","D"))
+levels(CandD)
+
+# proportion test
+
+propeller(x = CandD, clusters = CandD$Celltypes, sample = CandD$Sample, 
+group = CandD$Batch, transform="asin")
+
+propeller(x = CandD, clusters = CandD$Celltypes, sample = CandD$Sample, 
+group = CandD$Batch)
+
+# no significant differences between C and D
+
+```
+
+A vs C
+
+```{r}
+Idents(seu) <- "Batch"
+AandC <- subset(seu, idents = c("A","C"))
+levels(AandC)
+
+# proportion test
+
+propeller(x = AandC, clusters = AandC$Celltypes, sample = AandC$Sample, 
+group = AandC$Batch, transform="asin")
+
+propeller(x = AandC, clusters = AandC$Celltypes, sample = AandC$Sample, 
+group = AandC$Batch)
+
+# not significant differences between Stem cell like and Astrocytes 2 are significantly different FDR by arcsin
+# by log transform Stem cell like and Astrocytes 2 and oligodendrocytes
+
+
+
+```
+
+A vs D
+
+```{r}
+Idents(seu) <- "Batch"
+AandD <- subset(seu, idents = c("A","D"))
+levels(AandD)
+
+# proportion test
+
+propeller(x = AandD, clusters = AandD$Celltypes, sample = AandD$Sample, 
+group = AandD$Batch, transform="asin")
+
+propeller(x = AandD, clusters = AandD$Celltypes, sample = AandD$Sample, 
+group = AandD$Batch)
+
+# no significant differences A and D
+
+```
+
+B vs C
+
+```{r}
+Idents(seu) <- "Batch"
+BandC <- subset(seu, idents = c("B","C"))
+levels(BandC)
+
+# proportion test
+
+propeller(x = BandC, clusters = BandC$Celltypes, sample = BandC$Sample, 
+group = BandC$Batch, transform="asin")
+
+propeller(x = BandC, clusters = BandC$Celltypes, sample = BandC$Sample, 
+group = BandC$Batch)
+
+# not significant differences between Stem cell like and Astrocytes 2 and Radial Glia 3 are significantly different FDR by arcsin
+# by log transform Stem cell like and Astrocytes 2 and oligodendrocytes and Radial Glia 3
+
+
+```
+
+
+
+```{r}
+Idents(seu) <- "Batch"
+BandD <- subset(seu, idents = c("B","D"))
+levels(BandD)
+
+# proportion test
+
+propeller(x = BandD, clusters = BandD$Celltypes, sample = BandD$Sample, 
+group = BandD$Batch, transform="asin")
+
+propeller(x = BandD, clusters = BandD$Celltypes, sample = BandD$Sample, 
+group = BandD$Batch)
+
+# stem cells are different by log transform and no difference by arcin
+# 
+
+```
+
+
+Check Figure 4 contrasts
+
+```{r}
+# read in the figure 4 data
+# read in the data to analyze 
+pathway <- "/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/NatMethodJuneSubmission/Figure4/"
+seuAll <- readRDS(paste(pathway,"All9MOannaoteAug.RDS", sep = ""))
+
+colnames(seuAll@meta.data)
+
+```
+
+9 MBO data 3 genotypes
+
+```{r}
+propeller(x = seuAll, clusters = seuAll$Celltypes, sample = seuAll$Sample, 
+group = seuAll$IPSC, transform="asin")
+
+propeller(x = seuAll, clusters = seuAll$Celltypes, sample = seuAll$Sample, 
+group = seuAll$IPSC)
+
+# Plot cell type proportions
+plotCellTypeProps(x = seuAll, clusters = seuAll$Celltypes, sample = seuAll$Sample)
+
+# no signficant difference in asin and only Neurons 2 with log
+
+
+```
+
+
+Pairwise - first AIW002 vs 3450 and AJG001C as in Figure 4
+
+```{r}
+propeller(x = seuAll, clusters = seuAll$Celltypes, sample = seuAll$Sample, 
+group = seuAll$ipsc, transform="asin")
+
+propeller(x = seuAll, clusters = seuAll$Celltypes, sample = seuAll$Sample, 
+group = seuAll$ipsc)
+
+
+# Neurons 2 and oligodendrocytes signifiantly different by log transform
+# only Neurons 2 by arcsin
+
+
+
+
+
+
+```
+
+
+Subset compare each pair AIW002 vs AJG001C
+
+```{r}
+
+
+Idents(seuAll) <- "IPSC"
+levels(seuAll)
+AIWvsAJG <- subset(seuAll, idents = c("AIW002","AJG001"))
+levels(AIWvsAJG)
+
+# proportion test
+
+propeller(x = AIWvsAJG, clusters = AIWvsAJG$Celltypes, sample = AIWvsAJG$Sample, 
+group = AIWvsAJG$Batch, transform="asin")
+
+propeller(x = AIWvsAJG, clusters = AIWvsAJG$Celltypes, sample = AIWvsAJG$Sample, 
+group = AIWvsAJG$Batch)
+
+# no significant differences
+
+
+```
+
+AIW002 vs 3450
+
+```{r}
+Idents(seuAll) <- "IPSC"
+levels(seuAll)
+AIWvs3450 <- subset(seuAll, idents = c("AIW002","3450"))
+levels(AIWvs3450)
+
+# proportion test
+
+propeller(x = AIWvs3450, clusters = AIWvs3450$Celltypes, sample = AIWvs3450$Sample, 
+group = AIWvs3450$Batch, transform="asin")
+
+propeller(x = AIWvs3450, clusters = AIWvs3450$Celltypes, sample = AIWvs3450$Sample, 
+group = AIWvs3450$Batch)
+
+# no significant differences
+
+```
+
+AJG001C vs 3450
+
+```{r}
+Idents(seuAll) <- "IPSC"
+levels(seuAll)
+AJGvs3450 <- subset(seuAll, idents = c("AJG001","3450"))
+levels(AJGvs3450)
+
+# proportion test
+
+propeller(x = AJGvs3450, clusters = AJGvs3450$Celltypes, sample = AJGvs3450$Sample, 
+group = AJGvs3450$Batch, transform="asin")
+
+propeller(x = AJGvs3450, clusters = AJGvs3450$Celltypes, sample = AJGvs3450$Sample, 
+group = AJGvs3450$Batch)
+
+# no significant differences Neurons 2 almost
+
+```
+
+
+# Creating a permutation anova test
+
+
+Original permulation test
+
+```{r}
+library(scProportionTest)
+# create a propotion test object
+
+Idents(seuAll) <- "Celltypes"
+prop_test <- sc_utils(seuAll)
+
+# set up the comparison
+
+# need to compare separately
+prop_test <- permutation_test(
+	prop_test, cluster_identity = "Celltypes",
+	sample_1 = "AIW002", sample_2 = "AJG001",
+	sample_identity = "IPSC"
+)
+
+# make the plot
+permutation_plot(prop_test)
+
+```
+
+
+
+
+
+
+```{r}
+
+
+#' Single-Cell Utilities
+#'
+#' @slot meta_data Seurat meta-data
+#' @slot results Results for various analysis
+#'
+#' @rdname sc_utils-class
+#' @export
+
+setClass(
+	"sc_utils",
+	representation(
+		meta_data = "data.table",
+		results = "list"
+	),
+	prototype(
+		meta_data = data.frame(),
+		results = list()
+	)
+)
+
+# makes an object class sc_utils with two slots 'meta_data' for storing seurat metadata and 'results' for the analysis results
+
+
+#' Single-Cell Utilities Constructor
+#'
+#' @import methods
+#' @import Seurat
+#' @import data.table
+#'
+#' @param seurat_object Seurat object with meta-data
+#'
+#' @rdname sc_utils-class
+#' @export
+
+sc_utils <- function(seurat_object) {
+
+	## Pull meta-data out of Seurat object.
+	metadata <- as.data.table(
+		seurat_object[[]],
+		keep.rownames = "cell_id"
+	)
+
+	## Create new sc_utils object.
+	sc_utils_obj <- new(
+		"sc_utils",
+		meta_data = metadata
+	)
+
+	return(sc_utils_obj)
+}
+
+
+# sc_utils function takes in the seurat object
+# extracts metadata from seurat object - all metadata is extracted
+# creates sc_utils object with the seurat metadata 
+
+
+#' Permutation Test For Proportions
+#'
+#' @param sc_utils_obj sc_utils object
+#' @param cluster_identity Column that has cluster names
+#' @param sample_1 First sample to compare (ie. control)
+#' @param sample_2 Sample to compare to first sample (ie. treatment)
+#' @param sample_identity Column that has sample names
+#' @param n_permutations Number of permutations
+#'
+#' @rdname permutation_test-function
+#'
+#' @export
+
+permutation_test <- function(
+	sc_utils_obj,
+	cluster_identity = NA,
+	sample_identity = "orig.ident",
+	n_permutations = 1000
+) {
+ 	## Prepare data.
+	meta_data <- copy(sc_utils_obj@meta_data) # this is all the metadata
+
+	meta_data <- meta_data[
+		### here get the unique meta data im the designated sample identity slot instead of getting two sample idenitites
+	  #get(sample_identity) %in% c(sample_1, sample_2),
+		c(..sample_identity, ..cluster_identity)
+	]
+
+	setnames(
+		meta_data,
+		old = c(sample_identity, cluster_identity),
+		new = c("samples", "clusters")
+	) # names the cell types clusters and the conditions as samples
+
+	meta_data[, clusters := as.character(clusters)]
+	cluster_cases <- unique(meta_data[["clusters"]])
+	
+		## Get observed differences in fraction between two samples - in orginal function
+	### change code to get differences between all samples, the way it would be done in a ANOVA or manova
+	
+	obs_diff <- meta_data[, .(count = .N), by = .(samples, clusters)]
+	obs_diff <- obs_diff[
+		CJ(samples = samples, clusters = cluster_cases, unique = TRUE),
+		on = .(samples, clusters)
+	][
+		is.na(count), count := 0
+	][]
+	obs_diff[, fraction := count / sum(count), by = samples]
+	obs_diff <- dcast(obs_diff, clusters ~ samples, value.var = "fraction")
+	obs_diff[, obs_log2FD := log2(get(sample_2)) - log2(get(sample_1))]
+
+	## Permutation test.
+	##This section conducts the permutation test by shuffling the samples and calculating log-fold changes for each permutation.
+	### change this to shuffle all the samples not just the two.  This might not need to be adjusted
+
+	perm_results <- matrix(NA, nrow(obs_diff), n_permutations)
+	rownames(perm_results) <- sort(cluster_cases)
+
+	for (i in seq_len(n_permutations)) {
+		permuted <- copy(meta_data)
+		permuted[["samples"]] <- sample(permuted[["samples"]])
+		permuted <- permuted[, .(count = .N), by = .(samples, clusters)]
+		permuted <- permuted[
+			CJ(samples = samples, clusters = cluster_cases, unique = TRUE),
+			on = .(samples, clusters)
+		][
+			is.na(count), count := 0
+		][]
+		permuted[, fraction := count / sum(count), by = samples]
+		permuted <- dcast(permuted, clusters ~ samples, value.var = "fraction")
+		permuted[, perm_log2FD := log2(get(sample_2)) - log2(get(sample_1))]
+
+		perm_results[, i] <- permuted[["perm_log2FD"]]
+	}
+
+	### This section computes p-values and false discovery rates based on the permutation results.
+	### this might need to be adjusted to the number of samples 
+	### length(unique(samples)) should get the number of samples
+	increased <- rowSums(apply(perm_results, 2, function(x) obs_diff[["obs_log2FD"]] <= x))
+	increased <- (increased + 1) / (n_permutations + 1)
+
+	decreased <- rowSums(apply(perm_results, 2, function(x) obs_diff[["obs_log2FD"]] >= x))
+	decreased <- (decreased + 1) / (n_permutations + 1)
+
+	obs_diff[, pval := ifelse(obs_log2FD > 0, increased[.I], decreased[.I])]
+	obs_diff[, FDR := p.adjust(pval, "fdr")]
+
+
+		## Boostrap log2FD CI.
+##	This section computes bootstrapped confidence intervals for the log-fold changes.
+	### I don't think this needs to change but I'm not sure
+	### adjust to match above
+	boot_results <- matrix(NA, nrow(obs_diff), n_permutations)
+	rownames(boot_results) <- sort(cluster_cases)
+
+	for (i in seq_len(n_permutations)) {
+		booted <- copy(meta_data)
+		booted[, clusters := sample(clusters, replace = TRUE), by = samples]
+		booted <- booted[, .(count = .N), by = .(samples, clusters)]
+		booted <- booted[
+			CJ(samples = samples, clusters = cluster_cases, unique = TRUE),
+			on = .(samples, clusters)
+		][
+			is.na(count), count := 0
+		][]
+		booted[, fraction := count / sum(count), by = samples]
+		booted <- dcast(booted, clusters ~ samples, value.var = "fraction")
+		booted[, boot_log2FD := log2(get(sample_2)) - log2(get(sample_1))]
+
+		boot_results[, i] <- booted[["boot_log2FD"]]
+	}
+
+		boot_results[!is.finite(boot_results)] <- NA
+	boot_mean <- rowMeans(boot_results, na.rm = TRUE)
+	boot_ci <- t(apply(boot_results, 1, function(x) quantile(x, probs = c(0.025, 0.975), na.rm = TRUE)))
+	boot_ci <- as.data.table(boot_ci)
+	setnames(boot_ci, old = c(1, 2), new = c("boot_CI_2.5", "boot_CI_97.5"))
+
+	obs_diff[, boot_mean_log2FD := boot_mean]
+	obs_diff <- cbind(obs_diff, boot_ci)
+
+	## Store results and return object.
+	sc_utils_obj@results$permutation <- obs_diff
+	return(sc_utils_obj)
+}
+
+
+
+```
+
+Test the permutation test multi
+
+```{r}
+
+library(MASS)
+library(data.table)
+
+
+
+Idents(seuAll) <- "Celltypes"
+sc_utils_obj <- sc_utils(seuAll)
+# testing function give variables
+cluster_identity = "Celltypes"
+sample_identity = "IPSC"
+
+
+permutation_test_multi <- function(
+	sc_utils_obj,
+	cluster_identity = NA,
+	sample_identity = "orig.ident",
+	n_permutations = 1000
+) {
+	## Prepare data.
+	#meta_data <- copy(sc_utils_obj@meta_data) # this is all the metadata
+
+	meta_data <- sc_utils_obj@meta_data[
+		# Get unique values in the designated sample identity slot instead of getting two sample identities
+		, c(..sample_identity, ..cluster_identity)
+	]
+
+	setnames(
+		meta_data,
+		old = c(sample_identity, cluster_identity),
+		new = c("samples", "clusters")
+	) # names the cell types clusters and the conditions as samples
+
+	meta_data[, clusters := as.character(clusters)]
+	cluster_cases <- unique(meta_data[["clusters"]])
+
+	## Get observed differences in fraction between all samples
+	obs_diff <- meta_data[, .(count = .N), by = .(samples, clusters)]
+	obs_diff <- obs_diff[
+		CJ(samples = unique(meta_data$samples), clusters = cluster_cases, unique = TRUE),
+		on = .(samples, clusters)
+	][
+		is.na(count), count := 0
+	][]
+	obs_diff[, fraction := count / sum(count), by = samples]
+	# No need to calculate log-fold change here because we're not comparing two specific samples
+
+
+## Permutation test.
+# Get unique samples and clusters
+unique_samples <- unique(meta_data$samples)
+cluster_cases <- unique(meta_data$clusters)
+
+# Initialize perm_results with the correct dimensions
+perm_results <- matrix(NA, nrow = length(cluster_cases), ncol = length(unique_samples) * n_permutations)
+
+# Initialize data frame to store sample and cluster IDs
+sample_cluster_ids <- data.frame(sample_id = character(),
+                                 cluster_id = character(),
+                                 stringsAsFactors = FALSE)
+
+# Add sample and cluster IDs to a data frame
+sample_cluster_ids <- expand.grid(sample_id = unique_samples, cluster_id = cluster_cases)
+
+
+for (i in seq_len(n_permutations)) {
+  permuted <- copy(meta_data)
+  permuted[["samples"]] <- sample(permuted[["samples"]])
+  
+  # Compute count for each combination of samples and clusters
+  permuted_counts <- permuted[, .(count = .N), by = .(samples, clusters)]
+  
+  # Compute fraction for each combination of samples and clusters
+  permuted_counts[, fraction := count / sum(count), by = .(samples)]
+  
+  # Store sample and cluster IDs
+  sample_cluster_ids <- rbind(sample_cluster_ids, permuted_counts[, .(sample_id = unique(samples), cluster_id = clusters)])
+  
+  # Fill in perm_results with fractions
+  for (j in seq_along(unique_samples)) {
+    sample_data <- permuted_counts[samples == unique_samples[j], .(clusters, fraction)]
+    for (k in seq_along(cluster_cases)) {
+      index <- k
+      cluster_fraction <- sample_data[clusters == cluster_cases[k], fraction]
+      if (length(cluster_fraction) > 0) {
+        perm_results[index, (j - 1) * n_permutations + i] <- cluster_fraction
+      } else {
+        perm_results[index, (j - 1) * n_permutations + i] <- 0
+      }
+    }
+  }
+}
+
+# Add sample and cluster IDs as row and column names to perm_results
+rownames(perm_results) <- cluster_cases
+colnames(perm_results) <- rep(unique_samples, each = n_permutations)
+
+
+
+# Calculate observed differences in proportions across all samples
+obs_diff <- meta_data[, .(count = .N), by = .(samples, clusters)]
+obs_diff <- obs_diff[
+  CJ(samples = unique(meta_data$samples), clusters = cluster_cases, unique = TRUE),
+  on = .(samples, clusters)
+][
+  is.na(count), count := 0
+][, fraction := count / sum(count), by = samples]
+
+# Reshape obs_diff to match perm_results format
+obs_diff_reshaped <- dcast(obs_diff, clusters ~ samples, value.var = "fraction")
+
+# Initialize list to store MANOVA results
+obs_mano_stat <- list()
+
+# Calculate observed MANOVA statistic for each cluster
+for (cluster_id in cluster_cases) {
+  cluster_data <- obs_diff_reshaped[, c(cluster_id, unique_samples), with = FALSE]
+  manova_result <- manova(cluster_data ~ ., data = sample_cluster_ids)
+  obs_mano_stat[[cluster_id]] <- manova_result
+}
+
+# Extract the MANOVA F-statistic from the results
+obs_F_stat <- sapply(obs_mano_stat, function(mano_result) {
+  summary(mano_result)$stats[1, "value"]
+})
+
+# Calculate p-values for the observed F-statistics
+obs_p_values <- pf(obs_F_stat, length(unique_samples) - 1, length(unique_samples) * (n_permutations - 1), lower.tail = FALSE)
+
+# Store the observed F-statistics and p-values in a data frame
+obs_diff <- data.frame(cluster_id = cluster_cases, obs_F_stat = obs_F_stat, obs_p_value = obs_p_values)
+
+# Print the observed MANOVA statistics and p-values
+print(obs_diff)
+
+
+
+	## Bootstrap log2FD CI.
+	# This section computes bootstrapped confidence intervals for the log-fold changes
+	# No need to change this section
+
+	boot_results <- matrix(NA, nrow(obs_diff), n_permutations)
+	rownames(boot_results) <- sort(cluster_cases)
+
+	for (i in seq_len(n_permutations)) {
+		booted <- copy(meta_data)
+		booted[, clusters := sample(clusters, replace = TRUE), by = samples]
+		booted <- booted[, .(count = .N), by = .(samples, clusters)]
+		booted <- booted[
+			CJ(samples = unique(meta_data$samples), clusters = cluster_cases, unique = TRUE),
+			on = .(samples, clusters)
+		][
+			is.na(count), count := 0
+		][]
+		booted[, fraction := count / sum(count), by = samples]
+		# No need to calculate log-fold change here because we're not comparing two specific samples
+
+		boot_results[, i] <- booted[["boot_log2FD"]]
+	}
+
+	boot_results[!is.finite(boot_results)] <- NA
+	boot_mean <- rowMeans(boot_results, na.rm = TRUE)
+	boot_ci <- t(apply(boot_results, 1, function(x) quantile(x, probs = c(0.025, 0.975), na.rm = TRUE)))
+	boot_ci <- as.data.table(boot_ci)
+	setnames(boot_ci, old = c(1, 2), new = c("boot_CI_2.5", "boot_CI_97.5"))
+
+	obs_diff[, boot_mean_log2FD := boot_mean]
+	obs_diff <- cbind(obs_diff, boot_ci)
+
+	## Store results and return object.
+	sc_utils_obj@results$permutation <- obs_diff
+	return(sc_utils_obj)
+}
+
+
+```
+
+
+```{r}
+
+
+# Calculate sum of squares of differences for each cluster in the observed data
+observed_sumsq_diff <- tapply(obs_diff$fraction, obs_diff$clusters, function(cluster_data) {
+  sumsq_diff <- sum((cluster_data - mean(cluster_data))^2)
+  return(sumsq_diff)
+})
+
+# Calculate sum of squares of differences for each cluster in the permuted data
+permuted_sumsq_diff <- apply(perm_results, 1, function(cluster_data) {
+  matrix_data <- matrix(cluster_data, ncol = n_permutations)
+  row_sumsq_diff <- apply(matrix_data, 1, function(row) sum((row - mean(row))^2))
+  return(row_sumsq_diff)
+})
+
+# Calculate differences between observed and permuted sums of squares of differences
+sumsq_diff_differences <- observed_sumsq_diff - permuted_sumsq_diff
+
+# Perform statistical test to compare differences
+# For example, you could calculate p-values based on the differences
+p_values <- apply(sumsq_diff_differences, 1, function(cluster_diff) {
+  # Perform some statistical test (e.g., t-test) to compare observed and permuted differences
+  # Here, I'm just assuming a simple t-test for demonstration purposes
+  t_test_result <- t.test(cluster_diff)
+  return(t_test_result$p.value)
+})
+
+# Combine results into a data frame
+comparison_results <- data.frame(cluster = names(observed_sumsq_diff),
+                                 observed_sumsq_diff = observed_sumsq_diff,
+                                 permuted_sumsq_diff = rowSums(permuted_sumsq_diff),
+                                 sumsq_diff_differences = sumsq_diff_differences,
+                                 p_values = p_values)
+
+# Print results
+print(comparison_results)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Calculate mean or median of fractions for each sample within each cluster
+observed_means <- tapply(obs_diff$fraction, list(obs_diff$clusters, obs_diff$samples), mean)
+permuted_means <- apply(perm_results, 1, function(cluster_data) {
+  matrix_data <- matrix(cluster_data, ncol = n_permutations)
+  rowMeans(matrix_data)
+})
+
+# Calculate differences between observed and permuted means
+mean_differences <- observed_means - permuted_means
+
+# Perform statistical test to compare differences
+# For example, you could calculate p-values based on the differences
+p_values <- apply(mean_differences, 1, function(cluster_diff) {
+  # Perform some statistical test (e.g., t-test) to compare observed and permuted differences
+  # Here, I'm just assuming a simple t-test for demonstration purposes
+  t_test_result <- t.test(cluster_diff)
+  return(t_test_result$p.value)
+})
+
+# Combine results into a data frame
+comparison_results <- data.frame(cluster = rownames(mean_differences),
+                                 observed_means = observed_means,
+                                 permuted_means = permuted_means,
+                                 mean_differences = mean_differences,
+                                 p_values = p_values)
+
+# Print results
+print(comparison_results)
+
+
+```
+
+
+
+Attempt 2 with permuco library
+
+```{r}
+
+library(MASS)
+library(data.table)
+library("permuco")
+
+
+Idents(seuAll) <- "Celltypes"
+sc_utils_obj <- sc_utils(seuAll)
+
+
+
+permutation_test_multi <- function(
+	sc_utils_obj,
+	cluster_identity = "Celltypes",
+	sample_identity = "Batch",
+	n_permutations = 2000
+) {
+	## Prepare data.
+	#meta_data <- copy(sc_utils_obj@meta_data) # this is all the metadata
+
+	meta_data <- sc_utils_obj@meta_data[
+		# Get unique values in the designated sample identity slot instead of getting two sample identities
+		, c(..sample_identity, ..cluster_identity)
+	]
+
+	setnames(
+		meta_data,
+		old = c(sample_identity, cluster_identity),
+		new = c("samples", "clusters")
+	) # names the cell types clusters and the conditions as samples
+
+	meta_data[, clusters := as.character(clusters)]
+	cluster_cases <- unique(meta_data[["clusters"]])
+
+	## Get observed differences in fraction between all samples
+	obs_diff <- meta_data[, .(count = .N), by = .(samples, clusters)]
+	obs_diff <- obs_diff[
+		CJ(samples = unique(meta_data$samples), clusters = cluster_cases, unique = TRUE),
+		on = .(samples, clusters)
+	][
+		is.na(count), count := 0
+	][]
+	obs_diff[, fraction := count / sum(count), by = samples]
+
+	###  get the F statistic and pvalues and permutation test
+# Initialize an empty list to store results
+results <- list()
+
+# Loop over each unique cluster
+for (cluster in unique(obs_diff$clusters)) {
+  # Subset data for the current cluster
+  cluster_data <- subset(obs_diff, clusters == cluster)
+  
+  # Define the formula for ANOVA
+  formula <- fraction ~ count
+  
+  # Perform permutation test using aovperm
+  permutation_result <- aovperm(formula, data = cluster_data, np = n_permutations, type = "permutation", method = "freedman_lane")
+  
+  # Store the result in the list with cluster name as the key
+  results[[cluster]] <- permutation_result
+}
+
+# Create an empty data frame to store final results
+
+
+# Initialize an empty dataframe to store results
+results_df <- data.frame(Cluster = character(),
+                         stringsAsFactors = FALSE)
+
+# Loop over each unique cluster
+for (i in seq_along(results)) {
+  # Extract F-statistic, SS, and p-values
+  F_statistics <- results[[i]]$table$F
+  SS <- results[[i]]$table$SS[1]  # Extract the first SS value
+  parametric_p <- results[[i]]$table$`parametric P(>F)`[1]  # Extract the first p-value
+  resample_p <- results[[i]]$table$`resampled P(>F)`[1]  # Extract the resampled p-value
+  
+  # Extract sample fractions
+  cluster_data <- subset(obs_diff, clusters == unique(obs_diff$clusters)[i])
+  sample_fractions <- cluster_data$fraction
+  
+  # Create a new row for the cluster
+  new_row <- data.frame(Cluster = rep(unique(obs_diff$clusters)[i], 1),
+                        stringsAsFactors = FALSE)
+  
+  # Add sample fractions to the new row
+  for (sample in unique_samples) {
+    if (sample %in% cluster_data$samples) {
+      new_row[paste0(sample, ".Fraction")] <- sample_fractions[cluster_data$samples == sample]
+    } else {
+      new_row[paste0(sample, ".Fraction")] <- NA
+    }
+  }
+  
+  # Add SS, Parametric P-value, and Resampled P-value to the new row
+  new_row$SS <- SS
+  new_row$Parametric_Pval <- parametric_p
+  new_row$Resample_Pval <- resample_p
+  
+  # Append the new row to the results data frame
+  results_df <- rbind(results_df, new_row)
+}
+
+return(results_df)
+
+
+}
+
+
+Idents(seuAll) <- "Celltypes"
+sc_utils_obj <- sc_utils(seuAll)
+
+multi2 <- permutation_test_multi(
+	sc_utils_obj,
+	cluster_identity = "Celltypes",
+	sample_identity = "IPSC",
+	n_permutations = 2000
+)
+
+
+
+
+
+
+
+
+```
+
+
+Now make some kind of plot
+
+```{r}
+#library(ggplot2)
+
+
+# Reshape the dataframe to long format
+multi_long <- tidyr::pivot_longer(multi, cols = -c(Cluster, SS, Parametric_Pval, Resample_Pval), 
+                                  names_to = "Sample", values_to = "Fraction")
+
+# Extract sample names from Sample column
+multi_long$Sample <- sub("\\..*", "", multi_long$Sample)
+
+# Create the dot plot
+dot_plot <- ggplot(multi_long, aes(x = Fraction, y = Cluster, color = Parametric_Pval < 0.05)) +
+  geom_point(size = 3) +  # Plot points
+  scale_color_manual(values = c("TRUE" = "red", "FALSE" = "black")) +  # Color dots by significance
+  labs(x = "Fraction", y = "Cluster") +  # Add axis labels
+  theme_minimal() +  # Set plot theme
+  theme(axis.text.y = element_text(size = 8))  # Adjust size of y-axis text
+
+# Display the plot
+print(dot_plot)
+
+```
+
+```{r}
+
+library(ggplot2)
+
+# Reshape the dataframe to long format
+multi_long <- tidyr::pivot_longer(multi, cols = -c(Cluster, SS, Parametric_Pval, Resample_Pval), 
+                                  names_to = "Sample", values_to = "Fraction")
+
+# Extract sample names from Sample column
+multi_long$Sample <- sub("\\..*", "", multi_long$Sample)
+
+# Create the dot plot
+dot_plot <- ggplot(multi_long, aes(x = Fraction, y = Cluster, color = Sample)) +
+  geom_point(size = 3, aes(shape = Parametric_Pval < 0.05), stroke = 0.5) +  # Plot points
+  scale_color_viridis_d(option = "C") +  # Color dots by sample
+  scale_shape_manual(values = c("TRUE" = 21, "FALSE" = 19)) +  # Set shape of dots based on significance
+  labs(x = "Fraction", y = "Cluster") +  # Add axis labels
+  theme_minimal() +  # Set plot theme
+  theme(axis.text.y = element_text(size = 8))  # Adjust size of y-axis text
+
+# Display the plot
+print(dot_plot)
+
+```
+
+Difference from the mean
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+
+# Calculate the mean fraction value across the three samples for each cluster
+multi_mean <- multi %>%
+  mutate(Mean_Fraction = rowMeans(select(., ends_with(".Fraction")))) %>%
+  mutate(across(ends_with(".Fraction"), ~ . - Mean_Fraction))
+
+# Reshape the dataframe to long format
+multi_long <- tidyr::pivot_longer(multi_mean, cols = -c(Cluster, SS, Parametric_Pval, Resample_Pval, Mean_Fraction), 
+                                  names_to = "Sample", values_to = "Difference")
+
+# Extract sample names from Sample column
+multi_long$Sample <- sub("\\..*", "", multi_long$Sample)
+
+# Create the dot plot
+dot_plot <- ggplot(multi_long, aes(x = Difference, y = Cluster, color = Sample)) +
+  geom_point(size = 3, aes(shape = Parametric_Pval < 0.05), stroke = 0.5) +  # Plot points
+  scale_color_viridis_d(option = "C") +  # Color dots by sample
+  scale_shape_manual(values = c("TRUE" = 21, "FALSE" = 19)) +  # Set shape of dots based on significance
+  labs(x = "Difference from Mean", y = "Cluster") +  # Add axis labels
+  theme_minimal() +  # Set plot theme
+  theme(axis.text.y = element_text(size = 8))  # Adjust size of y-axis text
+
+# Display the plot
+print(dot_plot)
+
+
+```
+Plot the mean
+
+```{r}
+# Calculate the mean fraction value for each sample
+library(ggplot2)
+
+# Calculate the mean and standard deviation of the fractions across the three samples for each cluster
+multi_summary <- multi %>%
+  group_by(Cluster) %>%
+  summarise(Mean_Fraction = mean(c(AIW002.Fraction, AJG001.Fraction, `3450.Fraction`)),
+            Std_Dev = sd(c(AIW002.Fraction, AJG001.Fraction, `3450.Fraction`)),
+            Parametric_Pval = Parametric_Pval) %>%
+  arrange(Mean_Fraction)  # Arrange by mean fraction
+
+# Determine colors based on p-value
+multi_summary$color <- ifelse(multi_summary$Parametric_Pval < 0.05, "pink", "grey")
+
+# Create the dot plot
+dot_plot <- ggplot(multi_summary, aes(x = Mean_Fraction, y = reorder(Cluster, Mean_Fraction))) +
+  geom_point(size = 3, aes(color = color)) +  # Plot points with color
+  geom_errorbarh(aes(xmin = Mean_Fraction - Std_Dev, xmax = Mean_Fraction + Std_Dev), height = 0) +  # Add error bars for standard deviation
+  labs(x = "Mean Fraction", y = "Cluster") +  # Add axis labels
+  scale_color_identity() +  # Use specified colors
+  theme_minimal() +  # Set plot theme
+  theme(axis.text.y = element_text(size = 8))  # Adjust size of y-axis text
+
+# Display the plot
+print(dot_plot)
+
+
+```
+
+
+Adjust function so it works for any input
+
+```{r}
+permutation_test_multi <- function(
+  sc_utils_obj,
+  cluster_identity = "Celltypes",
+  sample_identity = "Batch",
+  n_permutations = 2000
+) {
+  ## Prepare data.
+  meta_data <- sc_utils_obj@meta_data[
+    , c(..sample_identity, ..cluster_identity)
+  ]
+  
+  setnames(
+    meta_data,
+    old = c(sample_identity, cluster_identity),
+    new = c("samples", "clusters")
+  )
+  
+  meta_data[, clusters := as.character(clusters)]
+  cluster_cases <- unique(meta_data[["clusters"]])
+  
+  ## Get observed differences in fraction between all samples
+  obs_diff <- meta_data[, .(count = .N), by = .(samples, clusters)]
+  obs_diff <- obs_diff[
+    CJ(samples = unique(meta_data$samples), clusters = cluster_cases, unique = TRUE),
+    on = .(samples, clusters)
+  ][
+    is.na(count), count := 0
+  ][]
+  obs_diff[, fraction := count / sum(count), by = samples]
+  
+  ## Get unique samples
+  unique_samples <- unique(obs_diff$samples)
+  
+  ###  get the F statistic and pvalues and permutation test
+  # Initialize an empty list to store results
+  results <- list()
+  
+  # Loop over each unique cluster
+  for (cluster in unique(obs_diff$clusters)) {
+    # Subset data for the current cluster
+    cluster_data <- subset(obs_diff, clusters == cluster)
+    
+    # Define the formula for ANOVA
+    formula <- fraction ~ count
+    
+    # Perform permutation test using aovperm
+    permutation_result <- aovperm(formula, data = cluster_data, np = n_permutations, type = "permutation", method = "freedman_lane")
+    
+    # Store the result in the list with cluster name as the key
+    results[[cluster]] <- permutation_result
+  }
+  
+  # Create an empty data frame to store final results
+  results_df <- data.frame(Cluster = character(),
+                            stringsAsFactors = FALSE)
+  
+  # Loop over each unique cluster
+  for (i in seq_along(results)) {
+    # Extract F-statistic, SS, and p-values
+    F_statistics <- results[[i]]$table$F
+    SS <- results[[i]]$table$SS[1]  # Extract the first SS value
+    parametric_p <- results[[i]]$table$`parametric P(>F)`[1]  # Extract the first p-value
+    resample_p <- results[[i]]$table$`resampled P(>F)`[1]  # Extract the resampled p-value
+    
+    # Extract sample fractions
+    cluster_data <- subset(obs_diff, clusters == unique(obs_diff$clusters)[i])
+    sample_fractions <- cluster_data$fraction
+    
+    # Create a new row for the cluster
+    new_row <- data.frame(Cluster = rep(unique(obs_diff$clusters)[i], 1),
+                          stringsAsFactors = FALSE)
+    
+    # Add sample fractions to the new row
+    for (sample in unique_samples) {
+      if (sample %in% cluster_data$samples) {
+        new_row[paste0(sample, ".Fraction")] <- sample_fractions[cluster_data$samples == sample]
+      } else {
+        new_row[paste0(sample, ".Fraction")] <- NA
+      }
+    }
+    
+    # Add SS, Parametric P-value, and Resampled P-value to the new row
+    new_row$SS <- SS
+    new_row$Parametric_Pval <- parametric_p
+    new_row$Resample_Pval <- resample_p
+    
+    # Append the new row to the results data frame
+    results_df <- rbind(results_df, new_row)
+  }
+  
+  return(results_df)
+}
+
+
+
+```
+
+
+
+
+
+
+
+Now run the AIW batches data
+
+```{r}
+
+# set up the data object with sc_utils
+
+#colnames(seu@meta.data)
+#library(Seurat)
+Idents(seu) <- "Celltypes"
+sc_utils_obj <- sc_utils(seu)
+
+
+
+multiBatch <- permutation_test_multi(
+	sc_utils_obj,
+	cluster_identity = "Celltypes",
+	sample_identity = "Batch",
+	n_permutations = 2000
+)
+
+multiBatch
+
+
+
+```
+
+Check this plot
+```{r}
+plot_diff <- function(data) {
+  # Calculate the mean fraction value across the samples for each cluster
+  data_mean <- data %>%
+    mutate(Mean_Fraction = rowMeans(select(., ends_with(".Fraction"))))
+  
+  # Reshape the dataframe to long format
+  data_long <- tidyr::pivot_longer(data_mean, cols = -c(Cluster, SS, Parametric_Pval, Resample_Pval, Mean_Fraction), 
+                                    names_to = "Sample", values_to = "Difference")
+  
+  # Extract sample names from Sample column
+  data_long$Sample <- sub("\\..*", "", data_long$Sample)
+  
+  # Create the dot plot
+  dot_plot <- ggplot(data_long, aes(x = Difference, y = Cluster, color = Sample, shape = Parametric_Pval <= 0.05)) +
+    geom_point(size = 3, stroke = 0.5) +  # Plot points
+    scale_color_viridis_d(option = "C") +  # Color dots by sample
+      # Set shape of dots based on significance
+    labs(x = "Difference from Mean", y = "Cluster") +  # Add axis labels
+    theme_minimal() +  # Set plot theme
+    theme(axis.text.y = element_text(size = 8)) +  # Adjust size of y-axis text
+    guides(shape = guide_legend(title = "Significance")) + # Add legend title for shape
+    scale_shape_manual(values = c("TRUE" = 21, "FALSE" = 19), 
+                        breaks = c(TRUE, FALSE),
+                        labels = c("P value < 0.05", "P value > 0.05"))
+  
+  return(dot_plot)
+}
+
+
+plot_diff(multiBatch)
+plot_diff(multi2)
+
+```
+
+
+Plot mean fraction
+
+
+```{r}
+plot_mean_fraction <- function(output_df) {
+  # Calculate the mean fraction and standard deviation across samples for each cluster
+  output_df <- output_df %>%
+    pivot_longer(cols = contains(".Fraction"), names_to = "Sample", values_to = "Fraction") %>%
+    group_by(Cluster) %>%
+    summarise(Mean_Fraction = mean(Fraction),
+              Std_Dev = sd(Fraction))
+  
+  # Plot the mean fraction and standard deviation
+  ggplot(output_df, aes(x = Mean_Fraction, y = reorder(Cluster, Mean_Fraction))) +
+    geom_point(size = 3) +  # Plot points
+    geom_errorbarh(aes(xmin = Mean_Fraction - Std_Dev, xmax = Mean_Fraction + Std_Dev), height = 0) +  # Add error bars
+    labs(x = "Mean Fraction", y = "Cluster") +  # Axis labels
+    theme_minimal() +  # Plot theme
+    theme(axis.text.y = element_text(size = 8))  # Adjust y-axis text size
+}
+
+# Example usage:
+plot_mean_fraction(multiBatch)
+
+
+
+
+```
+
+```{r}
+plot_mean_fraction <- function(output_df) {
+  # Calculate the mean fraction and standard deviation across samples for each cluster
+  output_df <- output_df %>%
+    pivot_longer(cols = contains(".Fraction"), names_to = "Sample", values_to = "Fraction") %>%
+    group_by(Cluster) %>%
+    summarise(Mean_Fraction = mean(Fraction),
+              Std_Dev = sd(Fraction),
+              P_parametric = min(Parametric_Pval))
+  
+  # Determine colors based on significance of contrast
+  output_df$color <- ifelse(output_df$P_parametric < 0.05, "pink", "grey")
+  
+  # Plot the mean fraction and standard deviation
+  ggplot(output_df, aes(x = Mean_Fraction, y = reorder(Cluster, Mean_Fraction), color = color)) +
+    geom_point(size = 3) +  # Plot points with color
+    geom_errorbarh(aes(xmin = Mean_Fraction - Std_Dev, xmax = Mean_Fraction + Std_Dev), height = 0) +  # Add error bars
+    labs(x = "Mean Fraction", y = "Cluster") +  # Axis labels
+    scale_color_identity() +  # Use specified colors
+    theme_minimal() +  # Plot theme
+    theme(axis.text.y = element_text(size = 8))  # Adjust y-axis text size
+}
+
+# Example usage:
+plot_mean_fraction(multiBatch)
+plot_mean_fraction(multi2)
+
+```
+
