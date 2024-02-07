@@ -389,9 +389,9 @@ permuco library for permutation test applied to single cell data in seurat objec
  
 ```{r}
 
-library(MASS)
 library(data.table)
 library("permuco")
+
 
 permutation_test_multi <- function(
   sc_utils_obj,
@@ -439,7 +439,7 @@ permutation_test_multi <- function(
     formula <- fraction ~ count
     
     # Perform permutation test using aovperm
-    permutation_result <- aovperm(formula, data = cluster_data, np = n_permutations, type = "permutation", method = "freedman_lane")
+    permutation_result <- aovperm(formula, data = cluster_data, type = "permutation")
     
     # Store the result in the list with cluster name as the key
     results[[cluster]] <- permutation_result
@@ -493,19 +493,21 @@ permutation_test_multi <- function(
 
 ```{r}
 
+#library(scProprtionTest)
 
-
+# must run sc_utils to set up the 
 Idents(seuAll) <- "Celltypes"
 sc_utils_obj <- sc_utils(seuAll)
 
 multi2 <- permutation_test_multi(
-	sc_utils_obj,
+	sc_utils_obj = sc_utils_obj,
 	cluster_identity = "Celltypes",
 	sample_identity = "IPSC",
-	n_permutations = 2000
+	n_permutations = 3000
 )
 
 multi2
+
 ```
 
 

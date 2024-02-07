@@ -1910,3 +1910,112 @@ get_means <- function(df, group_cols, value_col) {
 }
 
 
+
+
+###########################################################
+#' Permatation test multiple conditions using ANOVA
+#' Input single cell data in the from of sc_utils_obj
+#' The object must be made from the function sc_utils function in the library scProprotionTest
+#' The meta data from cluster annotations and the meta data slot containing
+#' the dependent variables to compare are entered. Three or more conditions must be present.
+#' A loop running the anova permutation test from the library permuco is run for each cell type.
+#' Example: permutation_avo <- permutation_test_multi(sc_utils_obj = sc_utils_obj,
+#' cluster_identity = "Celltypes",sample_identity = "IPSC",n_permutations = 3000)
+#'
+#' @export
+#' @import data.table
+#' @import permuco
+#' @import aovperm from permuco
+#'
+permutation_test_multi <- function(
+  sc_utils_obj,
+  cluster_identity = "Celltypes",
+  sample_identity = "Batch"
+) {
+  ## Prepare data.
+  meta_data <- sc_utils_obj@meta_data[
+    , c(..sample_identity, ..cluster_identity)
+  ]
+
+  setnames(
+    meta_data,
+    old = c(sample_identity, cluster_identity),
+    new = c("samples", "clusters")
+  )
+
+  meta_data[, clusters := as.character(clusters)]
+  cluster_cases <- unique(meta_data[["clusters"]])
+
+  ## Get observed differences in fraction between all samples
+  obs_diff <- meta_data[, .(count = .N), by = .(samples, clusters)]
+  obs_diff <- obs_diff[
+    CJ(samples = unique(meta_data$samples), clusters = cluster_cases, unique = TRUE),
+    on = .(samples, clusters)
+  ][
+    is.na(count), count := 0
+  ][]
+  obs_diff[, fraction := count / sum(count), by = samples]
+
+  ## Get unique samples
+  unique_samples <- unique(obs_diff$samples)
+
+  ###  get the F statistic and pvalues and permutation test
+  # Initialize an empty list to store results
+  results <- list()
+
+  # Loop over each unique cluster
+  for (cluster in unique(obs_diff$clusters)) {
+    # Subset data for the current cluster
+    cluster_data <- subset(obs_diff, clusters == cluster)
+
+    # Define the formula for ANOVA
+    formula <- fraction ~ count
+
+    # Perform permutation test using aovperm
+    permutation_result <- aovperm(formula, data = cluster_data, np = n_permutations, type = "permutation", method = "freedman_lane")
+
+    # Store the result in the list with cluster name as the key
+    results[[cluster]] <- permutation_result
+  }
+
+  # Create an empty data frame to store final results
+  results_df <- data.frame(Cluster = character(),
+                           stringsAsFactors = FALSE)
+
+  # Loop over each unique cluster
+  for (i in seq_along(results)) {
+    # Extract F-statistic, SS, and p-values
+    F_statistics <- results[[i]]$table$F
+    SS <- results[[i]]$table$SS[1]  # Extract the first SS value
+    parametric_p <- results[[i]]$table$`parametric P(>F)`[1]  # Extract the first p-value
+    resample_p <- results[[i]]$table$`resampled P(>F)`[1]  # Extract the resampled p-value
+
+    # Extract sample fractions
+    cluster_data <- subset(obs_diff, clusters == unique(obs_diff$clusters)[i])
+    sample_fractions <- cluster_data$fraction
+
+    # Create a new row for the cluster
+    new_row <- data.frame(Cluster = rep(unique(obs_diff$clusters)[i], 1),
+                          stringsAsFactors = FALSE)
+
+    # Add sample fractions to the new row
+    for (sample in unique_samples) {
+      if (sample %in% cluster_data$samples) {
+        new_row[paste0(sample, ".Fraction")] <- sample_fractions[cluster_data$samples == sample]
+      } else {
+        new_row[paste0(sample, ".Fraction")] <- NA
+      }
+    }
+
+    # Add SS, Parametric P-value, and Resampled P-value to the new row
+    new_row$SS <- SS
+    new_row$Parametric_Pval <- parametric_p
+    new_row$Resample_Pval <- resample_p
+
+    # Append the new row to the results data frame
+    results_df <- rbind(results_df, new_row)
+  }
+
+  return(results_df)
+}
+
