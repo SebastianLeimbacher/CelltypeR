@@ -4,7 +4,7 @@
 \alias{plotdensity_flowset}
 \title{Create a density plot from a flowset object}
 \usage{
-plotdensity_flowset(flowset, nsample_include = "all")
+plotdensity_flowset(flowset, sample_include = "all", select_channels = "all")
 }
 \description{
 Takes in a flowset object. Plot density plots for each channel in multichannel fsc

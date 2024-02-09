@@ -1920,7 +1920,7 @@ get_means <- function(df, group_cols, value_col) {
 #' the dependent variables to compare are entered. Three or more conditions must be present.
 #' A loop running the anova permutation test from the library permuco is run for each cell type.
 #' Example: permutation_avo <- permutation_test_multi(sc_utils_obj = sc_utils_obj,
-#' cluster_identity = "Celltypes",sample_identity = "IPSC",n_permutations = 3000)
+#' cluster_identity = "Celltypes",sample_identity = "IPSC")
 #'
 #' @export
 #' @import data.table
@@ -1930,7 +1930,8 @@ get_means <- function(df, group_cols, value_col) {
 permutation_test_multi <- function(
   sc_utils_obj,
   cluster_identity = "Celltypes",
-  sample_identity = "Batch"
+  sample_identity = "Batch",
+  n_permutations = 3000
 ) {
   ## Prepare data.
   meta_data <- sc_utils_obj@meta_data[

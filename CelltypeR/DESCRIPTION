@@ -1,12 +1,12 @@
 Package: CelltypeR
 Title: Workflow for analyzing multichannel single cell flow cytometry data
-Version: 0.0.1.3
+Version: 0.0.1.4
 Authors@R: person("Rhalena", "Thomas", email = "rhalena.thomas@mcgill.ca", role = c("aut", "cre"))
 Description: This package is for working with single cell data. There are functions for Flow cytometry data. To read in fsc files, align data and intergrate experiments. Functions to explore clustering methods. To create a seurat single cell object and visualize clusters. There are functions for cell type annotation from a reference matrix (correlation assignment method) or annotated data (Random Forest Classifier) or seurat label transfer. Finally there are functions to compare groups doing statistics and making plots. 
 License: `use_mit_license()`
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.2.3
+RoxygenNote: 7.3.1
 Imports:
         Rphenograph(>= 0.99.1),
         Seurat(>= 4.3.0),
@@ -27,5 +27,6 @@ Imports:
         clusterSim(>= 0.50.1),
         flowStats(>= 4.10.0),
         data.table(>= 1.14.8),
-        reshape2(>= 1.4.4)
-        
+        reshape2(>= 1.4.4),
+        permuco(>= 1.1.2),
+        data.table(>= 1.15.0)

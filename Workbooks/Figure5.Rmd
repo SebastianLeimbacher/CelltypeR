@@ -418,7 +418,38 @@ dev.off()
 
 ```
 
-Proportionality tests
+
+ANOVA permutation test across batches 
+
+```{r}
+
+
+library(scProportionTest)
+# create a propotion test object
+
+Idents(seu.q) <- "Celltypes"
+prop_test <- sc_utils(seu.q)
+
+# run the permutation anova
+# This is a CelltypeR function that utilizes the permutation test in the anova permutation function avoperm in the permuco library
+
+perm_anova_all_iPSC <- permutation_test_multi(
+	sc_utils_obj = prop_test,
+	cluster_identity = "Celltypes",
+	sample_identity = "IPSC"
+)
+
+# view the results
+
+perm_anova_all_iPSC
+perm_anova_all_iPSC[, c(1,6,7)]
+
+```
+
+
+
+
+Pair wise Proportionality tests
 
 ```{r}
 
