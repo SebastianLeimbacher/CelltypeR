@@ -68,5 +68,11 @@ if (!require("BiocManager", quietly = TRUE))
 BiocManager::install("flowCore")
 
 ```
+Note: the current version of CelltypeR is not compatible with Seurat Version 5. Please be sure to install version 4 or earlier. The package will be updated to accommodate different data structures for clustering and plotting functions soon. 
 
+# Help and contribution
+
+If you are receiving an error please open and issue.
+
+If you would like to contribute to this package please make a pull request.
 
