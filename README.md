@@ -49,8 +49,8 @@ Load CelltypeR library
 library("CelltypeR")
 ```
 
-There are dependencies that you may not have installed: Rphenograph, FlowSOM, flowCore 
-
+These are dependencies that you may not have installed: Rphenograph, FlowSOM, flowCore 
+Note: Rphenograph or FlowSOM are only used if you cluster with these algorithms instead of the Seurat implementation of Louvain network detection.  
 ```
 if(!require(devtools)){
   install.packages("devtools") # If not already installed
