@@ -49,8 +49,8 @@ Load CelltypeR library
 library("CelltypeR")
 ```
 
-There are dependencies that you may not have installed: Rphenograph, FlowSOM, flowCore 
-
+These are dependencies that you may not have installed: Rphenograph, FlowSOM, flowCore 
+Note: Rphenograph or FlowSOM are only used if you cluster with these algorithms instead of the Seurat implementation of Louvain network detection.  
 ```
 if(!require(devtools)){
   install.packages("devtools") # If not already installed
@@ -70,9 +70,14 @@ BiocManager::install("flowCore")
 ```
 Note: the current version of CelltypeR is not compatible with Seurat Version 5. Please be sure to install version 4 or earlier. The package will be updated to accommodate different data structures for clustering and plotting functions soon. 
 
-# Help and contribution
 
-If you are receiving an error please open and issue.
+# Help and Contributions
 
-If you would like to contribute to this package please make a pull request.
+If you are encountering an error or need help please open an issue. https://docs.github.com/en/issues/tracking-your-work-with-issues/creating-an-issue
+Contributions are welcome please contact Rhalena Thomas. 
+
+# Citation
+
+If you use this R package or any of the code or data in this repository in your research please cite:
+https://www.biorxiv.org/content/10.1101/2022.11.11.516066v3
 
