@@ -69,4 +69,13 @@ BiocManager::install("flowCore")
 
 ```
 
+# Help and Contributions
+
+If you are encountering an error or need help please open an issue. https://docs.github.com/en/issues/tracking-your-work-with-issues/creating-an-issue
+Contributions are welcome please contact Rhalena Thomas. 
+
+# Citation
+
+If you use this R package or any of the code or data in this repository in your research please cite:
+https://www.biorxiv.org/content/10.1101/2022.11.11.516066v3
 
