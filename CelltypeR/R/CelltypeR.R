@@ -25,7 +25,7 @@
 #' @import flowCore
 #' @importFrom flowCore read.flowSet fsApply
 
-fsc_to_fs <- function(input, downsample = 'none'){
+fsc_to_fs <- function(input_path = input_path, downsample = 'none'){
   flowset = read.flowSet(path=input_path,transformation = FALSE ,
                          emptyValue = FALSE,truncate_max_range = FALSE,
                          package="flowCore")
@@ -90,6 +90,11 @@ inversebiexponentialTransform <- function(flowset,a = 0.5, b = 1, c = 0.5, d = 1
 #' @export
 #' @examples
 #' harmonize(flowset, processing = 'retro', two_peaks = c(10:20), one_peak = c(1:9), theshold = 0.01)
+#' processing can be 'retro', 'biexp' or 'align'. If not designated retro will be run.
+#' 'retro' which will perform biexp transform, align peaks and reverse transform
+#' 'biexp' will preform a biexp transform
+#' 'align' will perform a biexp transform and align peaks
+#'
 #'
 #' @import flowCore
 #' @importFrom flowCore read.flowSet
@@ -242,12 +247,17 @@ combine_flowframes <- function(list_of_flowframes) {
 #' @importFrom dplyr select
 
 make_seu <- function(df, AB_vector){
+  # select the marker values
   df2 <- df %>% dplyr::select(all_of(AB_vector))
+  # convert to matrix
   m <- as.matrix(df2)
+  # transpose
   tm <- t(df2)
+  # add marker names and cell numbers
   rownames(tm) <- colnames(df2)
   colnames(tm) <- rownames(df2)
-  seu <- CreateSeuratObject(tm)
+  # create seurat object
+  seu <- CreateSeuratObject(counts = tm)
   seu <- AddMetaData(object=seu, metadata=df$Sample, col.name = 'Sample')
   #seu <- NormalizeData(seu)
   seu <- ScaleData(seu)
@@ -786,7 +796,7 @@ plot_randindex <- function (
 #' Plots will be saved if an input filepath is given.
 
 #' @export
-#' @import Seurat ggplot2 FlowSOM Rphenograph
+#' @import Seurat ggplot2 FlowSOM Rphenograph Matrix
 #' @importFrom Seurat FindNeighbors FindClusters
 #' @importFrom ggplot2 theme
 #' @importFrom FlowSOM ReadInput

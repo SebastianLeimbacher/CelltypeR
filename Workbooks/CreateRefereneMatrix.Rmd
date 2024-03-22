@@ -126,12 +126,12 @@ Flow cytometry data from 2D cell cultures
 # read in the flow cytometry data 
 # this is a csv that was created with the preprocessing workflow
 
-input_path <- "where/you/have/the/data/file/"
+input_path <- "/GITHUB/CelltypeR/ExampleOuts/Flow_csv/"
 
 # this is the complete data 
 # this data is available in the github
 
-fc <- read.csv(paste(input_path,"2Dcells_surface_flow.csv", sep = ""))
+fc <- read.csv(paste(input_path,"2Dcells_surfaceflowset.csv", sep = ""))
 
 # we now want to get the mean expression values for each antibody in each cell type
 # check what columns we have
@@ -202,17 +202,78 @@ heatmap(fcz,
         Rowv = NA,  # Don't cluster rows
         Colv = NA,  # Don't cluster columns
         col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
-        main = "Heatmap of Normalized Matrix")
+        main = "Heatmap of Normalized Matrix - FC from 2D cultures")
 
 # later we will see that the cell types not included in the flow cytometry data will have NA (empty spaces) for the missing cell types. 
 
 
 # save the flow cytometery in 2D cells normalized matrix
-output_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/"
-write.csv(fcz, paste(output_path,"FC_ReferenceMatrix.csv",sep = ""))
+
+write.csv(fcz, "FC_ReferenceMatrix.csv")
 
 
 ```
+
+Make a heat map of the FC only matrix
+
+```{r}
+fc <- read.csv("/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/ReferenceMatrices/FC_ReferenceMatrix.csv")
+# add markers as rownames
+rownames(fc) <- fc$X
+# remove X and reorder
+reference_data <- fc %>% select("Astrocyte","IPSC","NPC","Neuron","Oligo","OPC")
+
+#reference_data <- reference_data %>% select(-"X")
+#colnames(reference_data) <- c("Astrocyte","Endothelial","Epithelial","Neuron",    "NPC","OPC","Oligo","RG","Stem")
+
+
+mat <- as.matrix(reference_data)
+
+
+marker.order <- rev(c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4"))
+# reformat df
+
+library("reshape2")
+long_df <- melt(mat, varnames = c("Marker", "Cell_Type"), value.name = "Expression")
+long_df$Marker <- factor(long_df$Marker, levels = marker.order)
+
+
+# If you need to reorder the levels of the 'Marker' column, you can do it like this
+long_df$Marker <- factor(long_df$Marker, levels = marker.order)
+hm <- ggplot(long_df, aes(x = Cell_Type, y = Marker, fill = Expression)) +
+  geom_tile(color = "white") +  # Remove the black border by setting color to "white"
+  scale_fill_gradient(low = "seashell2", high = "red3") +
+  labs(x = "Cell Type", y = "Marker", fill = "Relative Expression") + 
+  theme_bw() +
+  theme(panel.border = element_blank(),  # Remove the panel border
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 12, colour = "black"), 
+        axis.text.y = element_text(hjust = 1 ,vjust = 0.5, size = 12, colour = "black"),
+        axis.title = element_text(colour = "black", size = 14),
+        panel.grid = element_blank(),
+        axis.ticks = element_blank())  # Remove the panel grid
+
+hm + ggtitle("Expression by cell type from Flow Cytometry") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+pdf("ReferenceMatrixFConly.pdf", width = 6.5, height = 5)
+hm + ggtitle("Expression by cell type from Flow Cytometry") +
+  theme(plot.title = element_text(hjust = 0.5))
+dev.off()
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
 
 Use RNA values from sorted human brain tissue. 
 These values are from an excel spreadsheet downloaded as the supplemental data from https://www.brainrnaseq.org/
@@ -713,7 +774,7 @@ seu <- AddMetaData(seu, metadata = Idents(seu), col.name = "Celltypes")
 # save the Main cell types for later
 saveRDS(seu,"/Users/rhalenathomas/Documents/Data/scRNAseq/PublicData/manno_human.rds" )
 
-table(seu$Celltypes,seu$cell_type1)
+table(seu$Celltypes,seu$Celltypes)
 unique(seu$Celltypes)
 # select only the cell types I want to use
 Idents(seu) <- "Celltypes"
@@ -752,8 +813,8 @@ colnames(df)
 # Neurons, DAN and IN are all neurons 
 # I'll take the average
 
-df$Neuron <- rowMeans(df[, c("Neurons","IN","DAN")])
-df <- df %>% select(-c("Neurons","IN","DAN"))
+df$Neuron <- rowMeans(df[, c("Neurons","IN","EN")])
+df <- df %>% select(-c("Neurons","IN","EN"))
 # change to same cell type names
 head(df)
 colnames(df) 
@@ -856,10 +917,10 @@ scBrain$Endothelial <- rowMeans(scBrain[, c("Endothelial.x", "Endothelial.y",
                                             "Endothelial.x.1","Endothelial.y.1",
                                             "endothelial")], na.rm = TRUE)
 scBrain$Oligo <- rowMeans(scBrain[, c("Oligodendrocyte.x","oligodendrocyte",
-                                     "Oligodendrocyte.y"), na.rm = TRUE])
+                                     "Oligodendrocyte.y")])
 
 scBrain$RadialGlia <- rowMeans(scBrain[, c("RG.x","RG.y","radial glia","RG")], na.rm = TRUE)
-scBrain$Stem <- rowMeans(scBrain[, c("IPC","dividing","Prog")], na.rm = TRUE)
+scBrain$Stem <- rowMeans(scBrain[, c("IPC","dividing")], na.rm = TRUE)
 
 scBrain <- scBrain %>% select(c("Astrocyte","Endothelial","OPC",
                                 "Oligo","neuron","RadialGlia","Stem"))
@@ -876,11 +937,11 @@ heatmap(RNAbrain,
         Rowv = NA,  # Don't cluster rows
         Colv = NA,  # Don't cluster columns
         col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
-        main = "Heatmap of Normalized Matrix")
+        main = "Heatmap of Normalized Matrix - Brain RNA expression")
 
 # save the average RNA brain expression matrix
-output_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/"
-write.csv(RNAbrain, paste(output_path,"BrainRNAReferenceMatrix.csv",sep = ""))
+
+write.csv(RNAbrain,"/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/BrainRNAReferenceMatrix.csv")
 
 
 ```
@@ -975,7 +1036,7 @@ Tanaka et al. 2020. Cell Rep. https://cells.ucsc.edu/?ds=organoidatlas&meta=Clus
 ```{r}
 input_path <- "/Users/rhalenathomas/Documents/Data/scRNAseq/PublicData/"
 so <- readRDS(paste(input_path,"UCSCorg30000cellsSeurat.RDS"))
-
+so <- readRDS("/Users/rhalenathomas/Documents/Data/scRNAseq/PublicData/UCSCorg30000cellsSeurat.RDS")
 colnames(so@meta.data)
 unique(so$Type)
 unique(so$Subtype)
@@ -1114,13 +1175,36 @@ zero.one <- t(apply(df_Org, MARGIN = 1, FUN = function(X) (X - min(X, na.rm = TR
 organoid <- zero.one
 
 # quick visualization
+
+library(RColorBrewer)
+
 heatmap(organoid, 
         Rowv = NA,  # Don't cluster rows
         Colv = NA,  # Don't cluster columns
-        col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
-        main = "Heatmap of Normalized Matrix")
-
+        scale = "column",
+        col= colorRampPalette(brewer.pal(8, "Blues"))(25),  # Define a color palette
+        main = "Organoid RNA expression ")
+legend(x="bottomright", legend=c("min", "ave", "max"), 
+     fill=colorRampPalette(brewer.pal(8, "Blues"))(3))
+# Add continuous color scale legend
+legend(x = "bottomright", 
+       legend = c("0","0.5","1"),  # Adjust legend to match the data range
+       fill = colorRampPalette(c("white", "blue"))(100),
+       title = "Normalized Expression"
+)
 # save the organoid dataframe
+
+heatmap(as.matrix(dataSet[, -1]), Colv = NA, Rowv = NA, 
+        scale="column", xlab="something", ylab="", main="A title", 
+        labRow=dataSet$labels, labCol=colnames(dataSet[, -1]), 
+        col= colorRampPalette(brewer.pal(8, "Oranges"))(25))
+
+legend(x="bottomright", legend=c("min", "ave", "max"), 
+     fill=colorRampPalette(brewer.pal(8, "Oranges"))(3))
+
+
+
+
 write.csv(organoid,"/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/OrganoidReferenceMatrix.csv")
 
 
@@ -1137,7 +1221,7 @@ I will first take the mean of the transcriptomics then take the mean of the resu
 ```{r}
 # I will read in the saved csv files and will have 3 dataframes with a column for the rownames
 
-input_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/"
+input_path <- "/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/ReferenceMatrices/"
 
 fc <- read.csv(paste(input_path,"FC_ReferenceMatrix.csv",sep = ""))
 brain <- read.csv(paste(input_path,"BrainRNAReferenceMatrix.csv",sep = ""))
@@ -1165,22 +1249,81 @@ df <- rna_merge %>% select(c("Endothelial","Epithelial", "Neurons",
                              "Oligo"))
 
 rownames(df) <- rna_merge$X
-
+head(df)
 zero.one <- t(apply(df, MARGIN = 1, FUN = function(X) (X - min(X, na.rm = TRUE))/diff(range(X, na.rm = TRUE))))
 
 # Assign the column names from the reference data frame to the normalized matrix
-trans_df <- zero.one
+trans_df_RNA <- zero.one
 
 # quick visualization
-heatmap(trans_df, 
+heatmap(trans_df_RNA, 
         Rowv = NA,  # Don't cluster rows
         Colv = NA,  # Don't cluster columns
         col = colorRampPalette(c("white", "blue"))(100),  # Define a color palette
-        main = "Heatmap of Normalized Matrix")
+        main = "RNA brain and Organoid Normalized Expression")
 
 
 
 ```
+
+Plot the combined transcriptomics data
+
+```{r}
+write.csv(trans_df_RNA,"/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/ReferenceMatrices/RNAReferenceMatrix.csv")
+
+rna <- read.csv("/Users/rhalenathomas/GITHUB/CelltypeR/ExampleOuts/ReferenceMatrices/RNAReferenceMatrix.csv")
+# add markers as rownames
+rownames(rna) <- rna$X
+# remove X and reorder
+reference_data <- rna %>% select("Astrocytes","Endothelial","Epithelial","NPC","Neurons","Oligo","OPC","RG","StemCell")
+
+colnames(reference_data) <- c("Astrocyte","Endothelial","Epithelial","NPC","Neuron","Oligo","OPC","RG","Stem")
+
+rownames(reference_data) <-  c("AQP4",  "CD24",  "CD44", "CD184", "CD15", "HepaCAM", "CD29", "CD56",  "O4", "CD140a","CD133",  "GLAST","CD71") 
+
+mat <- as.matrix(reference_data)
+# rename genes to proteins
+
+marker.order <- rev(c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4"))
+# reformat df
+
+library("reshape2")
+long_df <- melt(mat, varnames = c("Marker", "Cell_Type"), value.name = "Expression")
+long_df$Marker <- factor(long_df$Marker, levels = marker.order)
+
+
+# If you need to reorder the levels of the 'Marker' column, you can do it like this
+long_df$Marker <- factor(long_df$Marker, levels = marker.order)
+hm <- ggplot(long_df, aes(x = Cell_Type, y = Marker, fill = Expression)) +
+  geom_tile(color = "white") +  # Remove the black border by setting color to "white"
+  scale_fill_gradient(low = "seashell2", high = "red3") +
+  labs(x = "Cell Type", y = "Marker", fill = "Relative Expression") + 
+  theme_bw() +
+  theme(panel.border = element_blank(),  # Remove the panel border
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 12, colour = "black"), 
+        axis.text.y = element_text(hjust = 1 ,vjust = 0.5, size = 12, colour = "black"),
+        axis.title = element_text(colour = "black", size = 14),
+        panel.grid = element_blank(),
+        axis.ticks = element_blank())  # Remove the panel grid
+
+hm + ggtitle("Expression by cell type from RNA sequencing") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+pdf("ReferenceMatrixRNAonly.pdf", width = 6.5, height = 5)
+hm + ggtitle("Expression by cell type from RNA sequencing") +
+  theme(plot.title = element_text(hjust = 0.5))
+dev.off()
+
+
+```
+
+
+
+
+
+
+
+
 
 Now take the mean of the transcription and the FC protein levels
 
@@ -1191,7 +1334,7 @@ protein.names <- fc$X
 
 rownames(fc) <- fc$X
 
-gene.names <- rownames(trans_df)
+gene.names <- rownames(trans_df_RNA)
 # see the two lists
 gene.names
 protein.names
@@ -1201,8 +1344,9 @@ gene.protein <- c("AQP4","CD24","CD44","CD184","CD15",
                   "HepaCAM","CD29", "CD56",  "O4", "CD140a",
                   "CD133","GLAST", "CD71")
 
-rownames(trans_df) <- gene.protein
-
+rownames(trans_df_RNA) <- gene.protein
+rownames(trans_df_RNA)
+colnames(trans_df_RNA)
 # merge the dataframes by rownames
 df_merge <- merge(fc,trans_df, by = 0)
 # add in the rownames
@@ -1245,6 +1389,173 @@ heatmap(ref_mat,
 
 
 ```
+
+
+Compare RNA to protein
+
+```{r}
+dim(fc)
+colnames(fc)
+rownames(fc)
+fc <- fc %>% select(-X)
+colnames(fc)
+
+colnames(trans_df_RNA)
+# change cell type names to match
+
+colnames(fc) <-c("StemCell", "Neurons","OPC","Oligo","NPC","Astrocytes", "Endothelial","Epithelial", "RG")
+rownames(trans_df_RNA)
+fc <- fc %>% select("StemCell", "Neurons","OPC","Oligo","NPC","Astrocytes", "Endothelial","Epithelial", "RG")
+
+
+```
+
+```{r}
+#library(ggplot2)
+
+# Get missing cell types in fc
+missing_cell_types <- setdiff(colnames(trans_df_RNA), colnames(fc))
+
+# Create a data frame with missing cell types and assign value 0.5 to all markers
+missing_data <- data.frame(cell_type = missing_cell_types,
+                           matrix(0.5, nrow = length(missing_cell_types), ncol = nrow(fc)),
+                           row.names = NULL)
+
+# Assign column names to the missing data frame
+colnames(missing_data)[-1] <- rownames(fc)
+
+# Bind the missing data to fc
+# Transpose missing_data
+missing_data <- t(missing_data)
+
+if (nrow(missing_data) != nrow(fc)) {
+  # If not, subset missing_data to match the rows of fc
+  missing_data <- missing_data[rownames(fc), ]
+}
+
+# Bind the missing data to fc
+fc <- cbind(fc, missing_data)
+fc
+class(fc)
+# convert to numeric 
+
+fc_temp <- fc
+fc_temp[] <- lapply(fc, as.numeric)
+fc_temp
+
+
+```
+make a plot
+
+```{r}
+
+# Reorder column and row names of fc_temp to match trans_df_RNA
+fc_temp <- fc_temp[, colnames(trans_df_RNA)]
+fc_temp <- fc_temp[row.names(trans_df_RNA), ]
+library(tidyr)
+
+# Convert fc_temp to data frame and set row names as a column
+fc_df <- fc_temp
+
+fc_df$markers <- rownames(fc_df)
+
+# pivot long
+fc_long <- pivot_longer(data = fc_df, 
+                        cols = -markers,
+                        names_to = "cell_type",
+                        values_to = "value")
+
+# Convert trans_df_RNA to long format
+rna_df <- as.data.frame(trans_df_RNA)
+rna_df$markers <- rownames(rna_df)
+rna_long <- pivot_longer(data = rna_df, 
+                        cols = -markers,
+                        names_to = "cell_type",
+                        values_to = "value")
+
+rna_long
+# Add marker column to rna_long
+
+# merge 
+combined_data <- left_join(fc_long, rna_long, by = c("markers", "cell_type"), suffix = c(".protein", ".rna"))
+
+# Plot
+
+# dot plot only
+ggplot(combined_data, aes(x = value.protein, y = value.rna, color = markers)) +
+  geom_point() +
+  facet_wrap(~ cell_type, scales = "free_x") +
+  labs(x = "Protein Value", y = "RNA Value", color = "Marker") +
+  theme_minimal()
+
+
+### show correlation
+
+correlation <- cor(combined_data$value.protein, combined_data$value.rna)
+
+# Plot
+ggplot(combined_data, aes(x = value.protein, y = value.rna, color = markers)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "black", linetype = "dashed") +  # Add linear regression line
+  facet_wrap(~ cell_type, scales = "free_x") +
+  labs(x = "Protein Value", y = "RNA Value", color = "Marker", title = paste("Correlation Coefficient:", round(correlation, 2))) +
+  theme_minimal()
+
+# with the R value
+# Plot with linear regression lines
+gg <- ggplot(combined_data, aes(x = value.protein, y = value.rna, color = markers)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "black", linetype = "dashed") +  # Add linear regression line
+  facet_wrap(~ cell_type, scales = "free_x") +
+  labs(x = "Protein Value", y = "RNA Value", color = "Marker") +
+  theme_minimal()
+
+# Calculate correlation coefficient (R) for each facet
+correlation_data <- combined_data %>%
+  group_by(cell_type) %>%
+  summarize(correlation = cor(value.protein, value.rna)) %>%
+  ungroup()
+
+# Annotate plot with correlation coefficient
+gg <- gg +
+  geom_text(data = correlation_data, aes(label = paste("R =", round(correlation, 2))), 
+            x = Inf, y = -Inf, hjust = 0, vjust = 1, size = 3, color = "darkgrey", 
+            inherit.aes = FALSE, show.legend = FALSE)
+
+gg
+
+# Plot with linear regression lines
+gg <- ggplot(combined_data, aes(x = value.protein, y = value.rna, color = markers)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "grey", linetype = "dashed") +  # Add linear regression line
+  facet_wrap(~ cell_type, scales = "free_x") +
+  labs(x = "Protein Value", y = "RNA Value", color = "Marker") +
+  theme_minimal()
+
+# Calculate correlation coefficient (R) for each facet
+correlation_data <- combined_data %>%
+  group_by(cell_type) %>%
+  summarize(correlation = cor(value.protein, value.rna)) %>%
+  ungroup()
+
+# Annotate plot with correlation coefficient
+gg <- gg +
+  geom_text(data = correlation_data, aes(label = paste("R =", round(correlation, 2))), 
+            x = -Inf, y = Inf, hjust = 0, vjust = 1, size = 3, color = "black", 
+            inherit.aes = FALSE, show.legend = FALSE)
+
+gg
+
+
+
+
+
+```
+
+
+
+
+
 
 Save the reference matrix to be used in the correlation function
 
@@ -1973,6 +2284,9 @@ heatmap(z_RNA,
 
 
 ```
+
+
+
 
 Combine the new panel FC and transcriptomics
 

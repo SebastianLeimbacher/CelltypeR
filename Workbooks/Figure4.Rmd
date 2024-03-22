@@ -711,23 +711,31 @@ plot_diff <- function(data, title = "Name of plot", colours = c("orange", "blue"
   
   # Reshape the dataframe to long format
   data_long <- tidyr::pivot_longer(data_mean, cols = -c(Cluster, SS, Parametric_Pval, Resample_Pval, Mean_Fraction), 
-                                    names_to = "Sample", values_to = "Difference")
+                                    names_to = "Sample", values_to = "Fraction")
+  
+  # Calculate the difference from the mean
+  data_long <- data_long %>%
+    group_by(Cluster) %>%
+    mutate(Difference = Fraction - Mean_Fraction)
   
   # Extract sample names from Sample column
   data_long$Sample <- sub("\\..*", "", data_long$Sample)
   
+  # Order clusters by mean fractions
+  data_long$Cluster <- factor(data_long$Cluster, levels = unique(data_long$Cluster[order(data_long$Mean_Fraction, decreasing = TRUE)]))
+  
   # Create the dot plot
-  dot_plot <- ggplot(data_long, aes(x = Difference, y = Cluster, color = Sample, shape = Parametric_Pval <= 0.05)) +
+  dot_plot <- ggplot(data_long, aes(x = Difference, y = reorder(Cluster, Mean_Fraction), color = Sample, shape = Parametric_Pval <= 0.05)) +
     geom_point(size = 3, stroke = 0.5) +  # Plot points
     scale_color_manual(values = colours) +  # Color dots by sample
-      # Set shape of dots based on significance
     labs(x = "Difference from Mean", y = "Cluster") +  # Add axis labels
     theme_minimal() +  # Set plot theme
     theme(axis.text.y = element_text(size = 8)) +  # Adjust size of y-axis text
     guides(shape = guide_legend(title = "Significance")) + # Add legend title for shape
     scale_shape_manual(values = c("TRUE" = 21, "FALSE" = 19), 
                         breaks = c(TRUE, FALSE),
-                        labels = c("P value < 0.05", "P value > 0.05"))
+                        labels = c("P value < 0.05", "P value > 0.05")) +
+    scale_x_continuous(expand = expansion(add = c(0.05, 0.05)))  # Ensure x-axis starts at zero
   
   return(dot_plot)
 }
@@ -758,19 +766,17 @@ plot_mean_fraction <- function(output_df, title = "Name of plot") {
     ggtitle(title)
 }
 
-# Example usage:
-
-
-
+# make plots
 
 dfplot <- plot_diff(perm_anova_all_iPSC, title = "Difference from the mean proprotion of each cell type for iPSC lines AIW002, AJG001C, 3450", colours = c("#E57A77","#1F449C","#7CA1CC"))
 meanplot <- plot_mean_fraction(perm_anova_all_iPSC, "Mean proprotion of Cell types across iPSC lines AIW002, AJG001C, 3450")
 
-pdf("Diff_from_mean_3ipsc_lines_permanova.pdf")
+# save plot
+pdf("Diff_from_mean_3ipsc_lines_permanova.pdf", width = 7, height = 4)
 dfplot
 dev.off()
 
-
+# see plots
 dfplot
 meanplot
 

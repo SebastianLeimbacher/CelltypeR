@@ -101,11 +101,13 @@ colnames(scRNAseq.mean)
 rna.mean <- scRNAseq.mean %>% dplyr::select("Astrocytes","RadialGlia","Neurons1","Neurons2")
 FC.mean <- FC.mean %>% dplyr::select("Astrocytes","RadialGlia","Neurons1","Neurons2")
 
+colnames(rna.mean)
+colnames(FC.mean)
 df.cor <- cor(FC.mean, rna.mean)
 # first one is the rows and second is the columns, FC measures on the y axis
 
-FC.mean
-rna.mean
+rownames(FC.mean)
+rownames(rna.mean)
 
 # try calculating z scores
 # this works on rows
@@ -130,6 +132,131 @@ df.cor
 
 ```
 
+
+Plot expression RNA x FC for each antibody 
+
+```{r}
+
+# Combine the data into a single dataframe
+combined_data <- data.frame(
+  Marker = rep(rownames(FC.mean), each = ncol(FC.mean)),
+  Cell_Type = rep(colnames(FC.mean), times = nrow(FC.mean)),
+  FC_Value = as.vector(t(FC.mean)),
+  RNA_Value = as.vector(t(rna.mean))
+)
+
+# Create the dot plot
+gg <- ggplot(combined_data, aes(x = FC_Value, y = RNA_Value, color = Marker)) +
+  geom_point() +
+  facet_wrap(~ Cell_Type, scales = "free") +
+  labs(x = "FC Expression Values", y = "RNA Expression Values", color = "Marker") +
+  theme_minimal()
+
+# Calculate correlation coefficient (R) for each facet
+correlation_data <- combined_data %>%
+  group_by(Cell_Type) %>%
+  summarize(correlation = cor(FC_Value, RNA_Value))
+
+# Add linear regression lines
+gg <- gg +
+  geom_smooth(method = "lm", se = FALSE, color = "black", linetype = "dashed") # Add linear regression line
+  
+# Annotate plot with correlation coefficient
+gg <- gg +
+  geom_text(data = correlation_data, aes(label = paste("R =", round(correlation, 2))), 
+            x = -Inf, y = Inf, hjust = 0, vjust = 1, size = 4, color = "black", 
+            inherit.aes = FALSE, show.legend = FALSE)
+
+gg
+
+
+# Function to z-score normalize a matrix
+z_score_normalize <- function(mat) {
+  apply(mat, 2, function(x) (x - mean(x)) / sd(x))
+}
+
+# Function to min-max scale a matrix
+min_max_scale <- function(mat) {
+  apply(mat, 2, function(x) (x - min(x)) / (max(x) - min(x)))
+}
+
+# Z-score normalize the FC and RNA matrices
+FC_normalized <- min_max_scale(z_score_normalize(as.matrix(FC.mean)))
+RNA_normalized <- min_max_scale(z_score_normalize(as.matrix(rna.mean)))
+
+# Combine the data into a single dataframe
+combined_data <- data.frame(
+  Marker = rep(rownames(FC_normalized), each = ncol(FC_normalized)),
+  Cell_Type = rep(colnames(FC_normalized), times = nrow(FC_normalized)),
+  FC_Value = as.vector(t(FC_normalized)),
+  RNA_Value = as.vector(t(RNA_normalized))
+)
+
+# Create the dot plot
+gg <- ggplot(combined_data, aes(x = FC_Value, y = RNA_Value, color = Marker)) +
+  geom_point() +
+  facet_wrap(~ Cell_Type, scales = "free") +
+  labs(x = "FC Expression Values", y = "RNA Expression Values", color = "Marker") +
+  theme_minimal()
+
+# Calculate correlation coefficient (R) for each facet
+correlation_data <- combined_data %>%
+  group_by(Cell_Type) %>%
+  summarize(correlation = cor(FC_Value, RNA_Value))
+
+# Add linear regression lines
+gg <- gg +
+  geom_smooth(method = "lm", se = FALSE, color = "black", linetype = "dashed") # Add linear regression line
+  
+# Annotate plot with correlation coefficient
+gg <- gg +
+  geom_text(data = correlation_data, aes(label = paste("R =", round(correlation, 2))), 
+            x = -Inf, y = Inf, hjust = 0, vjust = 1, size = 4, color = "black", 
+            inherit.aes = FALSE, show.legend = FALSE)
+
+gg
+
+
+```
+Plot FC vs RNA for each marker by cell type
+
+```{r}
+
+
+# Reshape the FC dataframe
+melted_FC <- FC.mean.z %>%
+  rownames_to_column(var = "Marker") %>%
+  pivot_longer(cols = -Marker, names_to = "Cell_type", values_to = "FC_expression")
+
+# Reshape the RNA dataframe
+melted_RNA <- rna.mean.z %>%
+  rownames_to_column(var = "Marker") %>%
+  pivot_longer(cols = -Marker, names_to = "Cell_type", values_to = "RNA_expression")
+
+# Merge the melted dataframes
+combined_data <- merge(melted_FC, melted_RNA, by = c("Marker", "Cell_type"))
+
+
+correlation_data2 <- combined_data %>%
+  group_by(Marker) %>%
+  summarise(correlation = cor(FC_expression, RNA_expression, use = "pairwise.complete.obs"))
+
+correlation_data2
+
+
+plot2 <- ggplot(combined_data, aes(x = FC_expression, y = RNA_expression, color = Cell_type)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, aes(group = 1), linetype = "dashed", color = "black") + # Add linear regression line
+  facet_wrap(~ Marker, scales = "free") + # Facet by Marker
+  labs(x = "FC Expression", y = "RNA Expression", color = "Cell Types") +
+  theme_minimal() +
+  geom_text(data = correlation_data2, aes(x = Inf, y = -Inf, label = paste("R =", round(correlation, 2))),
+            hjust = 1, vjust = 0, size = 3, inherit.aes = FALSE) + # Annotate with R values
+  theme(legend.position = "bottom") # Place legend at the bottom
+
+plot2
+
+```
 
 # Figure 6C
 Plot the heatmap of the correlation between Flow (protein) and scRNAseq (RNA)

@@ -61,8 +61,10 @@ flowset_retro <- harmonize(flowset, processing = 'retro',
 
 # now create the data frame from the flowset object using the CelltypeR function flowset_to_csv
 df <- flowset_to_csv(flowset_retro)
+df <- flowset_to_csv(flowset) # with not alignment
 
-write.csv(df, "2Dcells_surfaceflowset.csv")
+# the Figures are made without alignment
+
 
 ```
 
@@ -74,23 +76,35 @@ seu <- make_seu(df, AB_vector = markers)
 Idents(seu) <- "Sample"
 levels(seu)
 celltypes <- c("Astrocytes","Neurons","NPC","Oligodendrocytes","Astrocytes","IPSC","NPC","Oligodendrocytes")
-seu <- CelltypeR::annotate(seu1, annotations = celltypes, to_label = 'Sample', annotation_name = 'Batch')
-Idents(seu) <- 'Batch'
-seu <- subset(seu, downsample = 10000)
+seu <- CelltypeR::annotate(seu, annotations = celltypes, to_label = 'Sample', annotation_name = 'Culture')
+Idents(seu) <- 'Culture'
+
+table(seu$Culture)
+table(seu$Sample)
+seu <- subset(x = seu, downsample = 10000)
 # note that Batch here refers to the culture types
+
 
 seu <- get_clusters(seu, method = "louvain", k = 25,
                     resolution = 0.25, plots = FALSE)
 DimPlot(seu, group.by = 'RNA_snn_res.0.25', repel = TRUE, raster = FALSE, pt.size = 0.25, label = TRUE) 
 
+DimPlot(seu, group.by = 'Sample', repel = TRUE, raster = FALSE, pt.size = 0.25, label = TRUE) 
+DimPlot(seu, group.by = 'Sample',split.by = "Culture", repel = TRUE, raster = FALSE, pt.size = 0.25, label = TRUE) 
+DimPlot(seu, group.by = "Culture", repel = TRUE, raster = FALSE, pt.size = 0.25, label = TRUE) 
 
+# try clustering again - 
+ seu <- RunUMAP(seu, dims = 1:12, n.neighbors = 60, min.dist = 0.1,
+                 spread = 1.5)
 
 ```
 
 Save Seurat object for later
 ```{r}
 saveRDS(seu, "Seurat2DcellCultures.RDS")
-#seu <- readRDS("Seurat2DcellCultures.RDS")
+seu <- readRDS("Seurat2DcellCultures.RDS")
+
+unique(seu$Sample)
 
 ```
 
@@ -99,17 +113,68 @@ Make heatmap of expression by cell type sample
 ```{r}
 
 # this is the seurat plotting function with bar colours and scale colours assigned.
-hm <- DoHeatmap(seu, group.by = "Batch", features = markers, size= 4,slot = "scale.data", group.colors = c("dodgerblue2","bisque","seagreen3","red3","mediumpurple3"), disp.max = 2, disp.min = -1.5) + scale_fill_gradientn(colors = c("#154c79", "#eeeee4", "#e28743")) + 
+
+
+hm <- DoHeatmap(seu, group.by = "Culture", features = markers, size= 4,slot = "scale.data", group.colors = c("dodgerblue2","bisque","seagreen3","red3","mediumpurple3"), disp.max = 1.5, disp.min = -1.5) + scale_fill_gradientn(colors = c("#154c79", "#eeeee4", "#e28743")) + 
   theme(axis.text.y = element_text(size = 12))
 hm
 
-pdf("Heatmap_2DcellSamples.pdf",width =5.5, height = 4)
-hm
-dev.off()
+#pdf("Heatmap_2DcellSamples.pdf",width =5.5, height = 4)
+#hm
+#dev.off()
 
+DoHeatmap(seu, group.by = "Sample", features = markers, size= 4,slot = "scale.data")
 
+Idents(seu) <- "Sample"
+levels(seu)
+### add cell type annotations - merge Astrocytes, NPC, Keep Oligo separate for OPC
+library(CelltypeR)
+seu <- CelltypeR::annotate(seu, annotations = c("Astrocyte","Neuron","NPC","Oligodendrocyte","Astrocyte","IPSC","NPC","OPC"), 
+  to_label = 'Sample',
+  annotation_name = "Culture2")
+
+DoHeatmap(seu, group.by = "Culture2", features = markers, size= 4,slot = "scale.data")
+
+Idents(seu) <- "Culture"
+levels(seu)
 
 ```
+
+Mean expression values per culture type
+
+```{r}
+library(data.table)
+
+cultureslevels <- c("Astrocytes","Neurons","NPC","Oligodendrocytes","IPSC")
+
+cellculture_order <- c("Astrocytes","IPSC","Neurons","NPC","Oligodendrocytes")
+
+
+
+
+markers <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
+hm <- plotmean(plot_type = 'heatmap',seu, group = "Culture", markers = markers, 
+         var_names = cultureslevels, slot = 'scale.data',
+                     xlab = 'Culture Type', ylab = 'Markers', 
+         cluster_order = cellculture_order, 
+         marker_order = rev(markers), high_colour = "red3",
+         mid_colour = "ivory", low_colour = "blue2")+
+  theme(panel.border = element_blank(), 
+           panel.grid = element_blank())
+hm
+
+
+
+pdf("heatmap_2DculturesInput.pdf",width = 6, height = 8)
+print(hm)
+dev.off()
+
+hm
+
+```
+
+
+
 
 
 UMAPS of 2D cell types
@@ -119,12 +184,12 @@ UMAPS of 2D cell types
 
 cell.order <- rev(c("Astrocytes","IPSC","Neurons","NPC","Oligo"))
 Idents(seu) <- "Batch"
-DimPlot(seu, repel = TRUE, label = TRUE, cols = c("dodgerblue2","bisque","seagreen3","red3","mediumpurple3"), order = cell.order, shuffle = TRUE ) 
+DimPlot(seu, repel = TRUE, label = TRUE, cols = alpha(c("dodgerblue2","bisque","seagreen3","red3","mediumpurple3"), 0.5), order = cell.order, shuffle = TRUE) 
 
-
+#cols=alpha(my_cols,0.66),pt.size=1)
 
 pdf("kn25UMAPcelltypes2D.pdf",width =6, height = 4)
-DimPlot(seu,label = FALSE, cols = c("dodgerblue2","bisque","seagreen3","red3","mediumpurple3"),
+DimPlot(seu,label = FALSE, cols = alpha(c("dodgerblue2","bisque","seagreen3","red3","mediumpurple3"), 0.5),
         order = cell.order, shuffle = TRUE) 
 dev.off()
 
@@ -284,25 +349,27 @@ Idents(seu) <- 'Subgroups2'
 length(levels(seu))
 
 
+
+
 #UMAP
 Idents(seu) <- 'Subgroups2'
 DimPlot(seu, repel = TRUE, label = TRUE,
-        cols = c("dodgerblue2","royalblue3",
+        cols = alpha(c("dodgerblue2","royalblue3",
                  "cadetblue3","darkturquoise","wheat4",
                  "seagreen3","red3","indianred1",
                  "mediumpurple3","pink",
-                 "bisque"), order = rev(cellorder2), 
+                 "bisque"),0.5), order = rev(cellorder2), 
         shuffle = TRUE) 
 
 
 
 pdf("kn25UMAPSubgroups2Dcells.pdf",width =6, height = 4)
 DimPlot(seu, repel = TRUE, label = FALSE,
-        cols = c("dodgerblue2","royalblue3",
+         cols = alpha(c("dodgerblue2","royalblue3",
                  "cadetblue3","darkturquoise","wheat4",
                  "seagreen3","red3","indianred1",
                  "mediumpurple3","pink",
-                 "bisque"),
+                 "bisque"),0.5),
                 order = rev(cellorder2), shuffle = TRUE) 
 dev.off()
 
@@ -338,16 +405,17 @@ hm <- plotmean(plot_type = 'heatmap',seu, group = "Subgroups2", markers = marker
          var_names = cluster.ids2, slot = 'scale.data',
                      xlab = 'Cell Types', ylab = 'Markers', 
          cluster_order = cellorder2, 
-         marker_order = rev(markers), high_colour = "darkblue",
-         mid_colour = "slateblue", low_colour = "ivory")+
+         marker_order = rev(markers), high_colour = "red3",
+         mid_colour = "ivory", low_colour = "blue2")+
   theme(panel.border = element_blank(), 
            panel.grid = element_blank())
 hm
 
 
-#pdf("heatmap_2DexpbySubgroup2.pdf",width = 4.5, height = 4)
-#print(hm)
-#dev.off()
+
+pdf("heatmap_2DexpbySubgroup2.pdf",width = 4.5, height = 4)
+print(hm)
+dev.off()
 
 hm
 

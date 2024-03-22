@@ -556,10 +556,10 @@ We first need to add the variables into the seurat object that we want to compar
 Idents(seu.t) <- 'Sample'
 levels(seu.t)
 
-Age <- c("155","155","155","150",
-         "30","30","30","30",
-         "60","60","60","60",
-         "100","100","100","100")
+Age <- c("155","155","155","155",
+         "38","38","38","38",
+         "63","63","63","63",
+         "97","97","97","97")
 Replicate <- c("R1","R2","R3","R4",
                "R1","R2","R3","R4",
                "R1","R2","R3","R4",
@@ -569,18 +569,18 @@ Replicate <- c("R1","R2","R3","R4",
 # vector with the new names - you need this vector from me
 cluster.ids <- Age
 
-names(cluster.ids) <- levels(seu)    # get the levels
-seu <- RenameIdents(seu, cluster.ids) # rename  
-seu$Days_in_FD <- Idents(seu)   # add a new dataslot
+names(cluster.ids) <- levels(seu.t)    # get the levels
+seu.t <- RenameIdents(seu.t, cluster.ids) # rename  
+seu.t$Days_in_FD <- Idents(seu.t)   # add a new dataslot
 
 # Replicate
-Idents(seu) <- "Sample"
+Idents(seu.t) <- "Sample"
 cluster.ids <- Replicate
 # vector with the new names - you need this vector from me
 
-names(cluster.ids) <- levels(seu)    # get the levels
-seu <- RenameIdents(seu, cluster.ids) # rename  
-seu$Replicate <- Idents(seu)   # add a new dataslot
+names(cluster.ids) <- levels(seu.t)    # get the levels
+seu.t <- RenameIdents(seu.t, cluster.ids) # rename  
+seu.t$Replicate <- Idents(seu.t)   # add a new dataslot
 
 # change the levels in the time course so that are in the order of actual time for plotting
 
@@ -591,7 +591,7 @@ levels(seu.t)
 days <- c("38","63","98","155")
 
 
-seu.t <- annotate(seu.t, annotations = days, to_label = "Days_in_FD", 
+seu.t <- Cell::annotate(seu.t, annotations = days, to_label = "Days_in_FD", 
                 annotation_name = "Days_in_FD")
 
 seu.t$Days_in_FD <- factor(seu.t$Days_in_FD, levels = c("38","63","98","155"))
@@ -756,7 +756,7 @@ ggplot(df, aes(x = DaysFD, y = Proportion *1000, color = Celltypes)) +
 dev.off()
 
 
-unique(df$DaysFD)
+#unique(df$DaysFD)
 
  
 ```
@@ -810,7 +810,127 @@ write_xlsx(results.list, path = "ANOVA2TimeCellsProportion.xlsx")
 
 ```
 
+
 Proportion test
+
+Look across all time points using anova permuation
+
+```{r}
+library(scProportionTest)
+# create a propotion test object
+
+Idents(seu.t) <- "Celltypes"
+prop_test <- sc_utils(seu.t)
+
+# run the permutation anova
+# This is a CelltypeR function that utilizes the permutation test in the anova permutation function avoperm in the permuco library
+
+perm_anova_timecourse <- permutation_test_multi(
+	sc_utils_obj = prop_test,
+	cluster_identity = "CelltypesMainNew",
+	sample_identity = "Days_in_FD"
+)
+
+# view the results
+
+perm_anova_timecourse
+perm_anova_timecourse[, c(1,7,8)]
+
+# save the results table
+write.csv(perm_anova_timecourse, "PermANOVA_timecourse.csv")
+
+
+
+```
+All the cell types are significantly different over time
+
+Visualize results of the anova perumutation test
+```{r}
+library(ggplot2)
+library(tidyverse)
+
+# plotting function - shows the Fraction (proportion of each cell type for each sample and highlights significant differences shown by permutation anova test)
+plot_diff <- function(data, title = "Name of plot", colours = c("orange", "blue", "purple")) {
+  # Calculate the mean fraction value across the samples for each cluster
+  data_mean <- data %>%
+    mutate(Mean_Fraction = rowMeans(select(., ends_with(".Fraction"))))
+  
+  # Reshape the dataframe to long format
+  data_long <- tidyr::pivot_longer(data_mean, cols = -c(Cluster, SS, Parametric_Pval, Resample_Pval, Mean_Fraction), 
+                                    names_to = "Sample", values_to = "Fraction")
+  
+  # Calculate the difference from the mean
+  data_long <- data_long %>%
+    group_by(Cluster) %>%
+    mutate(Difference = Fraction - Mean_Fraction)
+  
+  # Extract sample names from Sample column
+  data_long$Sample <- sub("\\..*", "", data_long$Sample)
+  # Convert Sample column to factor with desired levels
+  data_long$Sample <- factor(data_long$Sample, levels = c("38", "63", "98", "155"))
+  
+  # Order clusters by mean fractions
+  data_long$Cluster <- factor(data_long$Cluster, levels = unique(data_long$Cluster[order(data_long$Mean_Fraction, decreasing = TRUE)]))
+  
+  # Create the dot plot
+  dot_plot <- ggplot(data_long, aes(x = Difference, y = reorder(Cluster, Mean_Fraction), color = Sample, shape = Parametric_Pval <= 0.05)) +
+    geom_point(size = 3, stroke = 0.5) +  # Plot points
+    scale_color_manual(values = colours) +  # Color dots by sample
+    labs(x = "Difference from Mean", y = "Cluster") +  # Add axis labels
+    theme_minimal() +  # Set plot theme
+    theme(axis.text.y = element_text(size = 8)) +  # Adjust size of y-axis text
+    guides(shape = guide_legend(title = "Significance")) + # Add legend title for shape
+    scale_shape_manual(values = c("TRUE" = 21, "FALSE" = 19), 
+                        breaks = c(TRUE, FALSE),
+                        labels = c("P value < 0.05", "P value > 0.05")) +
+    scale_x_continuous(expand = expansion(add = c(0.01, 0.01)))  # Ensure x-axis starts at zero
+  
+  return(dot_plot)
+}
+
+
+## plotting function to plot the mean and standard deviation of the mean proportions across samples for each cell type - significant differences by the permutation anova test are shown in purple
+plot_mean_fraction <- function(output_df, title = "Name of plot") {
+  # Calculate the mean fraction and standard deviation across samples for each cluster
+  output_df <- output_df %>%
+    pivot_longer(cols = contains(".Fraction"), names_to = "Sample", values_to = "Fraction") %>%
+    group_by(Cluster) %>%
+    summarise(Mean_Fraction = mean(Fraction),
+              Std_Dev = sd(Fraction),
+              P_parametric = min(Parametric_Pval))
+  
+  # Determine colors and labels based on significance of contrast
+  output_df$color <- ifelse(output_df$P_parametric <= 0.05, "purple", "darkgrey")
+  output_df$significance <- ifelse(output_df$P_parametric <= 0.05, "P value < 0.05", "P value > 0.05")
+  
+  # Plot the mean fraction and standard deviation
+  ggplot(output_df, aes(x = Mean_Fraction, y = reorder(Cluster, Mean_Fraction), color = color)) +
+    geom_point(size = 3) +  # Plot points with color
+    geom_errorbarh(aes(xmin = Mean_Fraction - Std_Dev, xmax = Mean_Fraction + Std_Dev), height = 0) +  # Add error bars
+    labs(x = "Mean Fraction", y = "Cluster") +  # Axis labels
+    scale_color_identity() +  # Use specified colors
+    theme_minimal() +  # Plot theme
+    theme(axis.text.y = element_text(size = 8))  + # Adjust y-axis text size
+    ggtitle(title)
+}
+
+# make plots
+
+dfplot <- plot_diff(perm_anova_timecourse, title = "Difference from the mean proprotion of each cell type for over time", colours = c("#E57A77","#1F449C","#7CA1CC","green4"))
+meanplot <- plot_mean_fraction(perm_anova_timecourse, "Mean proprotion of Cell types over time")
+
+pdf("Diff_from_mean_timecourse_permanova.pdf", width = 6, height = 4.5)
+dfplot
+dev.off()
+
+
+dfplot
+meanplot
+
+```
+
+
+Test comparisons in pairs of time points
 
 ```{r}
 library(scProportionTest)
@@ -823,7 +943,7 @@ prop_test <- sc_utils(seu.t)
 # need to compare separately
 prop_test <- permutation_test(
 	prop_test, cluster_identity = "CelltypesMainNew",
-	sample_1 = "30", sample_2 = "60",
+	sample_1 = "38", sample_2 = "63",
 	sample_identity = "Days_in_FD"
 )
 
@@ -841,7 +961,7 @@ dev.off()
 
 prop_test <- permutation_test(
 	prop_test, cluster_identity = "CelltypesMainNew",
-	sample_1 = "60", sample_2 = "100",
+	sample_1 = "63", sample_2 = "98",
 	sample_identity = "Days_in_FD"
 )
 permutation_plot(prop_test)
@@ -856,7 +976,7 @@ dev.off()
 
 prop_test <- permutation_test(
 	prop_test, cluster_identity = "CelltypesMainNew",
-	sample_1 = "100", sample_2 = "150",
+	sample_1 = "98", sample_2 = "155",
 	sample_identity = "Days_in_FD"
 )
 permutation_plot(prop_test)
@@ -917,56 +1037,4 @@ permutation_plot(prop_test)
 ```
 
 
-
-```{r}
-# Load the data
-
-# Load the tidyr package if not already loaded
-# install.packages("tidyr")  # Uncomment and run if you haven't installed it
-
-library(tidyr)
-df <- as.data.frame(table(seu.t$CelltypesMainNew,seu.t$Days_in_FD,seu.t$Replicate))
-colnames(df) <- c("Celltypes","DaysFD","Replicate","Freq")
-# Pivot the data
-# Pivot the data
-fdata <- pivot_wider(df, names_from = DaysFD, values_from = Freq)
-# Get unique cell types
-unique_celltypes <- unique(df$Celltypes)
-
-# Initialize an empty data frame to store results
-results_df <- data.frame(Celltype = character(0), ChiSquare = numeric(0), P_Value = numeric(0))
-
-# Loop through each unique cell type and perform chi-square test
-for (celltype in unique_celltypes) {
-  subset_df <- df[df$Celltypes == celltype, ]
-  chisq_result <- chisq.test(subset_df$Freq)
-  
-  # Append the results to the data frame
-  results_df <- rbind(results_df, data.frame(
-    Celltype = celltype,
-    ChiSquare = chisq_result$statistic,
-    P_Value = chisq_result$p.value
-  ))
-}
-
-# Print the results
-print(results_df)
-
-```
-
-Multinomial Logistic Regression with Replicates
-
-```{r}
-library(nnet)
-
-df <- as.data.frame(table(seu.t$CelltypesMainNew,seu.t$Days_in_FD,seu.t$Replicate))
-colnames(df) <- c("Celltypes","DaysFD","Replicate","Freq")
-# Assuming df is your data frame with cell type proportions for each sample
-# Replicates are in the "Replicate" column
-model <- multinom(Celltypes ~ DaysFD + Replicate, data = df)
-summary(model)
-
-
-
-```
 

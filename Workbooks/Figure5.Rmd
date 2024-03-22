@@ -19,27 +19,68 @@ require(CelltypeR)
 
 # Annotate new AIW002 samples
 
-Read in the Live single cells gated in FlowJo
+Read in the Live single cells gated in FlowJo for AIW batches C, D
 
 ```{r}
 # input path is the pathway to the folder with the data
 
-input_path <- "/GITHUB/CelltypeR/FlowCytometry_Data/AIW_repeat_for_sorting"
-flowset <- fsc_to_fs(input_path, downsample = "none")
+
+input_pathCD <- "/Users/rhalenathomas/GITHUB/CelltypeR/FlowCytometry_Data/AIW_repeat_for_sorting"
+
+flowsetCD <- fsc_to_fs(input_path = input_pathCD, downsample = "none")
+
 
 
 library(flowWorkspace)  # this library has the function "sampleNames"
-sampleNames(flowset)
+sampleNames(flowsetCD_renamed)
+
+
 
 ```
+
+
+
+
+Check the cell counts
+```{r}
+# Assuming flowset.all is your flowset list
+# First, extract the names of the dataframes
+dataframe_names <- names(flowsetCD@frames)
+
+# Then, use lapply to iterate over each dataframe and extract the number of rows
+num_rows <- lapply(flowsetCD@frames, function(df) nrow(df))
+
+# Combine dataframe names and number of rows into a dataframe or a table
+result <- data.frame(Dataframe = dataframe_names, Rows = unlist(num_rows))
+
+
+dataframe_names <- names(flowset2@frames)
+
+# Then, use lapply to iterate over each dataframe and extract the number of rows
+num_rows <- lapply(flowset2@frames, function(df) nrow(df))
+
+# Combine dataframe names and number of rows into a dataframe or a table
+result2 <- data.frame(Dataframe = dataframe_names, Rows = unlist(num_rows))
+
+# Print the resulting table
+print(result2)
+
+# Print the resulting table
+print(result)
+
+
+
+```
+
+
 
 Rename with shorter sample names
 
 ```{r}
 # rename samples 
-sampleNames(flowset) <- c("M10_A","M10_B","M10_C","M10_D",
+sampleNames(flowsetCD) <- c("M10_A","M10_B","M10_C","M10_D",
                            "J10_A", "J10_B", "J10_C")
-sampleNames(flowset)
+sampleNames(flowsetCD)
 
 ```
 
@@ -346,6 +387,33 @@ DimPlot(seu, cols = clust.colours, shuffle = TRUE,
 
 ```
 
+Adjust UMAP parameters and plot again with alpha 0.5
+
+```{r}
+
+unique(seu.all$Celltypes)
+
+
+seu.all <- ScaleData(seu.all)
+seu.all <- RunPCA(seu.all, features = AB, dims = 1:12)
+seu.all <- RunUMAP(seu.all, dims = 1:12, n.neighbors = 60, a = 0.7, b = 0.75)
+
+
+DimPlot(seu.all, group.by = "Celltypes",label = TRUE, raster = FALSE, label.size = 4)
+DimPlot(seu.all, group.by = "Batch",label = TRUE, raster = FALSE, label.size = 4)
+
+colnames(seu.all@meta.data)
+unique(seu.all$ipsc)
+unique(seu.all$Batch)
+unique(seu.all$orig.ident)
+
+
+
+```
+
+
+
+
 save the plot: Figure 5A
 ```{r}
 
@@ -425,28 +493,114 @@ ANOVA permutation test across batches
 
 
 library(scProportionTest)
-# create a propotion test object
+# create a proportion test object
 
-Idents(seu.q) <- "Celltypes"
-prop_test <- sc_utils(seu.q)
+Idents(seu.all) <- "Celltypes"
+prop_test <- sc_utils(seu.all)
 
 # run the permutation anova
 # This is a CelltypeR function that utilizes the permutation test in the anova permutation function avoperm in the permuco library
 
-perm_anova_all_iPSC <- permutation_test_multi(
+perm_anova_aiwBatches <- permutation_test_multi(
 	sc_utils_obj = prop_test,
 	cluster_identity = "Celltypes",
-	sample_identity = "IPSC"
+	sample_identity = "Batch"
 )
 
 # view the results
 
-perm_anova_all_iPSC
-perm_anova_all_iPSC[, c(1,6,7)]
+perm_anova_aiwBatches
+perm_anova_aiwBatches[, c(1,7,8)]
+
+# save the results table
+#write.csv(perm_anova_aiwBatches, "PermANOVA_compareAIWbatches.csv")
+
 
 ```
 
+There are no significant differences for the parmeteric P value
 
+Visualize results
+```{r}
+library(ggplot2)
+library(tidyverse)
+
+# plotting function - shows the Fraction (proportion of each cell type for each sample and highlights significant differences shown by permutation anova test)
+plot_diff <- function(data, title = "Name of plot", colours = c("orange", "blue", "purple")) {
+  # Calculate the mean fraction value across the samples for each cluster
+  data_mean <- data %>%
+    mutate(Mean_Fraction = rowMeans(select(., ends_with(".Fraction"))))
+  
+  # Reshape the dataframe to long format
+  data_long <- tidyr::pivot_longer(data_mean, cols = -c(Cluster, SS, Parametric_Pval, Resample_Pval, Mean_Fraction), 
+                                    names_to = "Sample", values_to = "Fraction")
+  
+  # Calculate the difference from the mean
+  data_long <- data_long %>%
+    group_by(Cluster) %>%
+    mutate(Difference = Fraction - Mean_Fraction)
+  
+  # Extract sample names from Sample column
+  data_long$Sample <- sub("\\..*", "", data_long$Sample)
+  
+  # Order clusters by mean fractions
+  data_long$Cluster <- factor(data_long$Cluster, levels = unique(data_long$Cluster[order(data_long$Mean_Fraction, decreasing = TRUE)]))
+  
+  # Create the dot plot
+  dot_plot <- ggplot(data_long, aes(x = Difference, y = reorder(Cluster, Mean_Fraction), color = Sample, shape = Parametric_Pval <= 0.05)) +
+    geom_point(size = 3, stroke = 0.5) +  # Plot points
+    scale_color_manual(values = colours) +  # Color dots by sample
+    labs(x = "Difference from Mean", y = "Cluster") +  # Add axis labels
+    theme_minimal() +  # Set plot theme
+    theme(axis.text.y = element_text(size = 8)) +  # Adjust size of y-axis text
+    guides(shape = guide_legend(title = "Significance")) + # Add legend title for shape
+    scale_shape_manual(values = c("TRUE" = 21, "FALSE" = 19), 
+                        breaks = c(TRUE, FALSE),
+                        labels = c("P value < 0.05", "P value > 0.05")) +
+    scale_x_continuous(expand = expansion(add = c(0.05, 0.05)))  # Ensure x-axis starts at zero
+  
+  return(dot_plot)
+}
+
+## plotting function to plot the mean and standard deviation of the mean proportions across samples for each cell type - significant differences by the permutation anova test are shown in purple
+plot_mean_fraction <- function(output_df, title = "Name of plot") {
+  # Calculate the mean fraction and standard deviation across samples for each cluster
+  output_df <- output_df %>%
+    pivot_longer(cols = contains(".Fraction"), names_to = "Sample", values_to = "Fraction") %>%
+    group_by(Cluster) %>%
+    summarise(Mean_Fraction = mean(Fraction),
+              Std_Dev = sd(Fraction),
+              P_parametric = min(Parametric_Pval))
+  
+  # Determine colors and labels based on significance of contrast
+  output_df$color <- ifelse(output_df$P_parametric <= 0.05, "purple", "darkgrey")
+  output_df$significance <- ifelse(output_df$P_parametric <= 0.05, "P value < 0.05", "P value > 0.05")
+  
+  # Plot the mean fraction and standard deviation
+  ggplot(output_df, aes(x = Mean_Fraction, y = reorder(Cluster, Mean_Fraction), color = color)) +
+    geom_point(size = 3) +  # Plot points with color
+    geom_errorbarh(aes(xmin = Mean_Fraction - Std_Dev, xmax = Mean_Fraction + Std_Dev), height = 0) +  # Add error bars
+    labs(x = "Mean Fraction", y = "Cluster") +  # Axis labels
+    scale_color_identity() +  # Use specified colors
+    theme_minimal() +  # Plot theme
+    theme(axis.text.y = element_text(size = 8))  + # Adjust y-axis text size
+    ggtitle(title)
+}
+
+# make plots
+
+dfplot <- plot_diff(perm_anova_aiwBatches, title = "Difference from the mean proprotion of each cell type for AIW002 batches", colours = c("#E57A77","#1F449C","#7CA1CC","green4"))
+meanplot <- plot_mean_fraction(perm_anova_aiwBatches, "Mean proprotion of Cell types AIW002 batches")
+
+pdf("Diff_from_mean_AIW002batches_permanova.pdf", width = 9, height = 3.5)
+dfplot
+dev.off()
+
+
+dfplot
+meanplot
+
+```
 
 
 Pair wise Proportionality tests
@@ -709,10 +863,16 @@ seu <- make_seu(df, AB_vector = AB)
 # find clusters
 seu <- get_clusters(seu, method = "louvain",
                          df_input = df,
-                         k = 20,
+                         k = 40,
                          resolution = 1.8,
                          plots = FALSE,
                          save_plots = FALSE)
+
+seu <- RunUMAP(seu, features = AB, n.neighbors = 40, min.dist = 0.08)
+seu <- RunUMAP(seu, n.neighbors = 40, dims = 1:12, a = 0.7, b = 0.7)
+DimPlot(seu, group.by = "Sample", raster = FALSE, label = TRUE)
+DimPlot(seu, group.by = 'RNA_snn_res.1.8')
+DimPlot(seu, group.by = 'RNA_snn_res.1.8', split.by = "Sample")
 
 ```
 
@@ -728,10 +888,9 @@ Heatmap of marker expression by cluster
 
 ```{r}
 library(data.table)
-length(unique(seu$seurat_clusters))
+cN <- length(unique(seu$RNA_snn_res.1.8))
 plotmean(plot_type = 'heatmap',seu = seu, group = 'RNA_snn_res.1.8',
-         markers = AB, 
-               var_names = c(0:34), slot = 'scale.data', xlab = "Cluster",
+         markers = AB, slot = 'scale.data', xlab = "Cluster", var_names = c(1:cN),
                ylab = "Markers")
 
 ```
@@ -742,7 +901,7 @@ plotmean(plot_type = 'heatmap',seu = seu, group = 'RNA_snn_res.1.8',
 Calculate the correlations
 
 ```{r}
-reference_data <- read.csv("GITHUB/CelltypeR/ExampleOuts/ReferenceMatrices/FinalReferenceMatrix.csv")
+reference_data <- read.csv("/GITHUB/CelltypeR/ExampleOuts/ReferenceMatrices/FinalReferenceMatrix.csv")
 # the reference matrix need to be in the format cell types as rows and markers as columns
 # there is a column X with the cell type names
 df1 <- reference_data
@@ -753,14 +912,15 @@ colnames(df1) <- c("Astrocytes","Endothelial","Epithelial","Neurons",
 df.ref <- as.data.frame(t(df1))
 df.ref$X <- rownames(df.ref)
 
+
 df_test <- read.csv("FlowJoGatedCellPops.csv") # the X column needs to be the first column
 # run correlation
 cor <- find_correlation(test = df_test, 
                         reference = df.ref, 
-                        min_corr = 0.25, 
+                        min_corr = 0.45, 
                         min_diff = 0.01)
 
-write.csv(cor, "GatedCellsCorPredictUpdated.csv")
+write.csv(cor, "GatedCellsCorPredictFlowJOGated.csv")
 
 plot_corr(cor, threshold = 0.25, min_cells = 80)
 
@@ -769,6 +929,10 @@ plot_corr(cor, threshold = 0.25, min_cells = 80)
 Get the CAM predictions
 
 ```{r, fig.width=10}
+
+seu <- AddMetaData(object=seu, metadata=cor$cell.label, col.name = 'cor.labels')
+
+Idents(seu) <- 'cor.labels'
 
 plot_lab_clust(seu, seu$RNA_snn_res.1.8, seu$cor.labels, filter_out = c( "Unassigned","Mixed"))
 
@@ -781,11 +945,16 @@ plot_lab_clust(seu, seu$RNA_snn_res.1.8, seu$cor.labels, filter_out = c( "Unassi
   print(sort.tops)
 
   
+  
+  
+  
   cor.ann <- get_annotation(seu, seu.cluster = seu$RNA_snn_res.1.8, 
                           seu.label = seu$cor.labels, top_n = 1, 
                           filter_out = c("Unknown","unknown","Mixed", 
                                          "unassigned","Unassigned"), 
                           Label = "CAM")
+  
+  table(seu$RNA_snn_res.1.8,seu$cor.labels)
   
 
 ```
@@ -796,7 +965,7 @@ Random Forest Classifier
 
 # Random Forest classifier trained with annotations from subset of 9 MBO cells. 
 # read in the saved model
-rf <- readRDS("RFM_all9hMOAB.RDS")
+#rf <- readRDS("RFM_all9hMOAB.RDS")
 
 # test random forest function takes in the seurat object to have cells predicted and the trained model.  Must be trained with the same antibodies
 
@@ -841,7 +1010,7 @@ Seurat label transfer
 ```{r}
 # read in the reference matrix
 # prepare the reference
-seu.r<- readRDS("All9MOannaoteAug.RDS") 
+#seu.r<- readRDS("All9MOannaoteAug.RDS") 
 
 table(seu.r$Celltypes)
 
@@ -858,11 +1027,12 @@ Run the predictions
 ```{r}
 # notes this function automatically selects the total number of markers as the dim.  So max dim = 1:13 here. 
 seu <- seurat_predict(seu, seu.r, ref_id = 'Celltypes', 
-                        refdata = seu.r$Celltypes,
-                           down.sample = "none", 
+                      seu_meta = seu.r$Celltypes,down.sample ="none", 
                         markers = AB)
 
 DimPlot(seu, group.by = 'seu.pred', raster = FALSE, label = TRUE)
+
+
 ```
 
 ```{r}
@@ -902,13 +1072,12 @@ Used in Figure 5D and E
 
 ```{r, fig.width=4}
 
-cluster.ids <- c("NL","GL","GL", "GL","Epi", # 0-4
-                 "Neur2","NL","RG1","Neurons1-2","Neur2-oligo", #5-9 
-                 "Epi","NPC","Endo","Astro1","RG1", #10-14 
-                 "NPC","Neur1","NPC","Endo","Neur1",    #15-19
-                 "Astro1","Neur1","Oligo","Neur2","NL", #20-24
-                 "NPC","Astro1","Endo","RG3","Astro1",
-                 "Neur2","Endo","RG1","NPC", "Oligo"
+cluster.ids <- c("RGandGL1","NPC-Neuron","NL", "GL","Epi","GL", # 0-4
+                 "Neur2","Astro1","OPC-like","Astro1","NPC", #5-9 
+                 "RG1","NL","Neur1and2","Neur1","Endo", #10-14 
+                 "Neur2","Endo","Epi","NPC","RG1",    #15-19
+                 "Astro1","Neur1","Neur1","Neur2","OPC-like", #20-24
+                 "Oligo","Endo","Mix","RG1" #
                  )
 
 
@@ -916,42 +1085,59 @@ seu <- annotate(seu, annotations = cluster.ids,
                   to_label= "seurat_clusters", 
                   annotation_name = "Annotations1")
 
+
+proportionplots(seu, seu.var = seu$Sample, seu.lable = seu$Celltypes, 
+                groups = "Gated samples",  
+                my_colours = clust.colours)
+
+
+
 # change the names to long forms
-cluster.ids <- c("Neural-lineage","Glial-lineage","Epithelial","Neurons2",
-                 "RadialGlia1","Neurons1and2","Neurons2andOligo","NPC","Endothelial",
-                 "Astrocytes1","Neurons1","Oligodendrocytes","RadialGlia3")
+cluster.ids <- c("Glial-lineage and Radial Glia","NPC-Neurons",
+                 "Neural-lineage","Glial-lineage","Epithelial","Glial-lineage", #5
+                 "Neurons2","Astrocytes1","OPC-like","Astrocytes1","NPC", #10
+                 "RadialGlia1","Neural-lineage","Neurons1and2","Neurons1","Endothelial",
+                 "Neurons2","Endothelial","Epithelial","NPC","RadialGlia1",
+                 "Astrocytes1","Neurons1","Neurons1","Neurons2","OPC-like",
+                 "Oligodendrocytes","Endothelial","Neurons2","RadialGlia1")
+unique(seu$Celltypes)
 
 seu <- annotate(seu, annotations = cluster.ids, 
-                  to_label= "Annotations1", 
+                  to_label= "seurat_clusters", 
                   annotation_name = "Celltypes")
 
 # reorder the cell types
-cell.order <- c("Astrocytes1","RadialGlia1","RadialGlia3","Glial-lineage",
+cell.order <- c("Astrocytes1","RadialGlia1","Glial-lineage","Glial-lineage and Radial Glia",
                 "Epithelial","Endothelial","Neurons1",
-                "Neurons2","Neurons1and2","Neurons2andOligo","NPC",
-                "Neural-lineage","Oligodendrocytes")
+                "Neurons2","Neurons1and2","NPC-Neurons","NPC",
+                "Neural-lineage","OPC-like","Oligodendrocytes")
  
  clust.colours <- c("chocolate2",# Astrocytes 1
                    #"darkorange", # Astrocytes 2
                    #"orange", #Astro
                    "pink", # RG1
+                    "burlywood3",
                    #"deeppink",# RG1a
                    #"plum1", #RG2
                    "lightpink3",# RG stemlike
-                   "mistyrose2", # Glia-lineage
+                 
+                   #"mistyrose2", # Glia-lineage
                    "steelblue3",# epithelial
                    "deepskyblue", # endothelial
                    #"blue", # epi-endo
                    "mediumpurple1",# neurons 1
                    "purple",# Neurons2
                    "mediumpurple3", # Neurons1 and 2
-                   "grey", # Neurons2 and oligo
+                   #"grey", # Neurons2 and oligo
                    #"darkgrey",
+                   "orchid", # NPC and Neurons
                    "plum3", # NPC
                    #"tomato3",# stem like
-                   "mediumslateblue", # Neural lineage
-                   "seagreen3",#Oligo
-                   "olivedrab4", # OPC
+                   "grey", # NL
+                   #"mediumslateblue", # Neural lineage
+                  
+                   "olivedrab4", # OPC-like
+                    "seagreen3",#Oligo
                    "darkseagreen3",#OPC like
                    "burlywood3" #extra 
                    )
@@ -960,7 +1146,7 @@ cell.order <- c("Astrocytes1","RadialGlia1","RadialGlia3","Glial-lineage",
  
  seu$Celltypes <- factor(seu$Celltypes, levels = cell.order)
  
- DimPlot(seu, cols = clust.colours, shuffle = TRUE, 
+DimPlot(seu, cols = clust.colours, shuffle = TRUE, 
         raster=FALSE, pt.size = 0.1, label = TRUE, 
         group.by = "Celltypes")
  
@@ -977,18 +1163,22 @@ Figure 5D
 sample.colours  <- c("chocolate2",# Astrocytes 1
                    "steelblue3",# epithelial
                    "deepskyblue", # endothelial
-                   "mistyrose2", # Glia-lineage
-                   "mediumslateblue", # Neural lineage
+                   "burlywood3", # Glia-lineage
+                   "grey", # Neural lineage
                    "mediumpurple1",# neurons 1
                    "purple",# Neurons2
                    "plum3", # NPC
-                   "seagreen3",#Oligo
-                   "pink" # RG1
+                  "seagreen3",#Oligo
+                   "olivedrab4", #OPC-like
+                   "pink" # RG
                    )
 
 
 
-DimPlot(seu, cols = sample.colours, shuffle = TRUE, 
+
+
+
+DimPlot(seu, cols = alpha(sample.colours,0.5), shuffle = TRUE, 
         raster=FALSE, pt.size = 0.1, label = TRUE, 
         group.by = "Sample") +
 theme(legend.text = element_text(size=16), axis.title.y = element_text(size=16), 
@@ -996,8 +1186,8 @@ theme(legend.text = element_text(size=16), axis.title.y = element_text(size=16),
         axis.text.x = element_text(size =16))
 
 
-pdf("GatedCellPopsUMAP.pdf", width = 9, height = 4.5)
-DimPlot(seu, cols = sample.colours, shuffle = TRUE, 
+pdf("GatedCellPopsUMAP.pdf", width = 9, height = 5)
+DimPlot(seu, cols = alpha(sample.colours, 0.5), shuffle = TRUE, 
         raster=FALSE, pt.size = 0.1, label = FALSE, 
         group.by = "Sample") +
 theme(legend.text = element_text(size=16), axis.title.y = element_text(size=16), 
@@ -1014,4 +1204,26 @@ proportionplots(seu, seu.var = seu$Sample, seu.lable = seu$Celltypes,
                 groups = "Gated samples",  
                 my_colours = clust.colours)
 ```
+
+
+```{r}
+pdf("GatedCellPopsBarchart.pdf", width = 6.5, height = 5)
+proportionplots(seu, seu.var = seu$Sample, seu.lable = seu$Celltypes, 
+                groups = "Gated samples",  
+                my_colours = clust.colours)+ 
+  theme(legend.text = element_text(size=16), axis.title.y = element_text(size=16), 
+         axis.title.x = element_text(size=16), axis.text.y = element_text(size =16),
+        axis.text.x = element_text(size =16))
+dev.off()
+
+```
+
+```{r}
+saveRDS(seu,"/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/iScienceSubmission/Figure5/SeuratMarch2024Assigned.RDS")
+
+seu <- readRDS("/Users/rhalenathomas/Documents/Data/FlowCytometry/PhenoID/Analysis/iScienceSubmission/Figure5/SeuratMarch2024Assigned.RDS")
+
+
+```
+
 

@@ -373,7 +373,8 @@ seu <- get_clusters(seu, method = "louvain",
 # from bootstrap 100X
 # annotation is easier with 18-25 clusters 
 
-seu <- RunUMAP(seu, spread = 1, min.dist = 0.05, dims = 1:12)
+seu <- RunUMAP(seu, spread = 1, min.dist = 0.05, dims = 1:12) # original settings
+# change UMAP parameters for better visualization
 
 DimPlot(seu, reduction = "umap", label = TRUE, group.by = 'RNA_snn_res.0.7', repel = TRUE)
 
@@ -393,33 +394,51 @@ seu <- AddMetaData(object=seu, metadata= cor1$cell.label, col.name = 'cor.labels
 #plot the cluster predictions
 #plot_lab_clust(seu, seu$RNA_snn_res.0.7, seu$cor.labels01)
 
-DimPlot(seu, group.by = 'cor.labels55', label = TRUE) + theme(legend.position = "none")
-
-
-```
-
-Visualize CAM with the signifance 0.553 threshold
-
-```{r, fig.width=5}
-
-seu <- AddMetaData(object=seu, metadata= cor1$cell.label, col.name = 'cor.labels05')
-
-# see the labels added
-unique(seu$cor.labels05)
-
-
 DimPlot(seu, group.by = 'cor.labels05', label = TRUE) + theme(legend.position = "none")
 
 
 ```
 
+
+Filter rare cell types to make plot easier to read for threshold 0.553
+
+```{r}
+cell.freq <- table(seu$cor.labels05)
+
+# Filter cell labels with at least 500 cells
+selected_labels <- names(cell.freq[cell.freq >= 60])
+
+df.meta <- as.data.frame(seu$cor.labels05)
+# Create a new column 'cell.label.ft' with labels over 500 cells, and 'NA' for others
+df.meta$cell.label.ft <- df.meta$`seu$cor.labels05`
+df.meta$cell.label.ft <- ifelse(df.meta$cell.label.ft %in% selected_labels, df.meta$cell.label.ft, NA)
+
+seu <- AddMetaData(object=seu, metadata= df.meta$cell.label.ft, col.name = 'cor.labels05ft')
+unique(seu$cor.labels05ft)
+
+DimPlot(seu, group.by = 'cor.labels05ft', label = TRUE, 
+        label.size = 6, repel = TRUE) # + theme(legend.position = "none")
+
+### save a plot
+
+pdf("UMPAcorlables0553filtered60cells.pdf", width = 6.5, height = 4)
+DimPlot(seu, group.by = 'cor.labels05ft', label = TRUE, 
+        label.size = 5, repel = TRUE)
+dev.off()
+
+```
+
+
+
+
+
 Visualize CAM assignments with threshold R = 0.35
 
 ```{r, fig.width=5}
 
-seu <- AddMetaData(object=seu, metadata= cor3$cell.label, col.name = 'cor.labels035')
+#seu <- AddMetaData(object=seu, metadata= cor3$cell.label, col.name = 'cor.labels035')
 
-DimPlot(seu, group.by = 'cor.labels035', label = TRUE) + theme(legend.position = "none")
+#DimPlot(seu, group.by = 'cor.labels035', label = TRUE) + theme(legend.position = "none")
 
 # removing the combined cell labels that are low frequency will improve visualization
 # Check if the cell type has a frequency less than 500 and assign new label accordingly
@@ -427,7 +446,7 @@ DimPlot(seu, group.by = 'cor.labels035', label = TRUE) + theme(legend.position =
 cell.freq <- table(seu$cor.labels035)
 
 # Filter cell labels with at least 400 cells
-selected_labels <- names(cell.freq[cell.freq >= 500])
+selected_labels <- names(cell.freq[cell.freq >= 350])
 
 df.meta <- as.data.frame(seu$cor.labels035)
 # Create a new column 'cell.label.ft' with labels over 500 cells, and 'NA' for others
@@ -438,10 +457,45 @@ seu <- AddMetaData(object=seu, metadata= df.meta$cell.label.ft, col.name = 'cor.
 unique(seu$cor.labels035ft)
 
 DimPlot(seu, group.by = 'cor.labels035ft', label = TRUE, 
-        label.size = 8, repel = TRUE) + theme(legend.position = "none")
+        label.size = 4, repel = TRUE) + theme(legend.position = "none")
 
+table(seu$cor.labels035ft)
 
 ```
+Visualize with 0.1 R threshold 
+
+```{r}
+cell.freq <- table(seu$cor.labels01)
+
+# Filter cell labels with at least 500 cells
+selected_labels <- names(cell.freq[cell.freq >= 500])
+
+df.meta <- as.data.frame(seu$cor.labels01)
+# Create a new column 'cell.label.ft' with labels over 500 cells, and 'NA' for others
+df.meta$cell.label.ft <- df.meta$`seu$cor.labels01`
+df.meta$cell.label.ft <- ifelse(df.meta$cell.label.ft %in% selected_labels, df.meta$cell.label.ft, NA)
+
+seu <- AddMetaData(object=seu, metadata= df.meta$cell.label.ft, col.name = 'cor.labels01ft')
+unique(seu$cor.labels01ft)
+
+DimPlot(seu, group.by = 'cor.labels01ft', label = TRUE, 
+        label.size = 6, repel = TRUE) # + theme(legend.position = "none")
+
+### save a plot
+
+# increase overlaps
+#options(ggrepel.max.overlaps = Inf)
+
+pdf("UMPAcorlables01filtered500cells.pdf", width = 10, height = 5)
+DimPlot(seu, group.by = 'cor.labels01ft', label = TRUE, 
+        label.size = 6, repel = TRUE, alpha = 0.5)
+dev.off()
+
+table(seu$cor.labels01ft)
+table(seu$cor.labels01)
+
+```
+
 
 Get the top assigned cells per cluster for each threshold
 
@@ -522,24 +576,36 @@ cell.type.order <- c("Astrocytes 1", "Astrocytes 2","Radial Glia 1","Radial Glia
 #cell.type.order <- rev(cell.type.order)
 
 # colour order to match cell type order
-clust.colours <- c("chocolate2","darkorange","pink","plum1","lightpink3",
-                   "mistyrose2",
+clust.colours <- c("chocolate3","darkorange","plum1","deeppink1","lightpink1",
+                   "antiquewhite3",
                    "steelblue3","deepskyblue",
                    "mediumpurple1","purple","plum3",
                    "seagreen3","olivedrab4","tomato3","burlywood3")
                    
 
+# adjust UMAP visualization 
+
+seu <- RunUMAP(seu, spread = 5, a = 0.7, b = 0.8, dims = 1:12) 
+
+
 # Figure 3D UMAP with annotated clusters
 # use PDF for figure for correct resolution
-DimPlot(seu, order = rev(cell.type.order), cols = clust.colours, shuffle = TRUE, raster=FALSE,pt.size = 0.1, label = FALSE) 
+DimPlot(seu, order = rev(cell.type.order), cols = alpha(clust.colours, 0.5), shuffle = TRUE, raster=FALSE,pt.size = 0.1, label = TRUE)
 
-pdf("UMAPlabelled9000.noraster.pdf",width = 9, height = 5)
- DimPlot(seu, order = rev(cell.type.order), cols = clust.colours, shuffle = TRUE, raster=FALSE,pt.size = 0.1, label = FALSE) +
+pdf("UMAPlabelled9000.norasterMarch5.pdf",width = 9, height = 5)
+ DimPlot(seu, order = rev(cell.type.order), cols = alpha(clust.colours, 0.5), shuffle = TRUE, raster=FALSE,pt.size = 0.1, label = FALSE) +
    theme(legend.text = element_text(size=16), axis.title.y = element_text(size=16), 
          axis.title.x = element_text(size=16), axis.text.y = element_text(size =16),
         axis.text.x = element_text(size =16))
 dev.off()
 
+### for the legend
+pdf("UMAPlabelled9000.norasterMarchLegend.pdf",width = 9, height = 5)
+ DimPlot(seu, order = rev(cell.type.order), cols = clust.colours, shuffle = TRUE, raster=FALSE,pt.size = 0.1, label = FALSE) +
+   theme(legend.text = element_text(size=16), axis.title.y = element_text(size=16), 
+         axis.title.x = element_text(size=16), axis.text.y = element_text(size =16),
+        axis.text.x = element_text(size =16))
+dev.off()
 
 
 ######## figure 3E heatmap of the 
@@ -551,11 +617,33 @@ levels(seu) <- c("Astrocytes 1", "Astrocytes 2","Radial Glia 1","Radial Glia 2",
                      "Neurons 1","Neurons 2","NPC",
                      "Oligodendrocytes","OPC","Stem cell like","Unassigned")
 
-pdf("HM9000_fig3E.pdf",width = 8.5, height = 5)
-DoHeatmap(seu, features = AB, size= 6,slot = "scale.data", group.colors = clust.colours, disp.max = 2, disp.min = -1.5,
-          angle = 90) + scale_fill_gradientn(colors = c("#154c79", "#eeeee4", "#e28743")) + 
-  theme(axis.text.y = element_text(size = 15))
+pdf("HM9000_fig3EMarch.pdf",width = 8.5, height = 5)
+DoHeatmap(seu, features = AB, size= 6,slot = "scale.data", group.colors = clust.colours, disp.max = 1, disp.min = -1,
+          angle = 90) + scale_fill_gradientn(colors = c("#0b41b5","#5ecc58","#faec70")) + 
+  theme(axis.text.y = element_text(size = 15)) # low, med, high
 dev.off()
+
+### change colours in the heatmap
+
+DoHeatmap(seu, features = AB, size= 6,slot = "scale.data", group.colors = clust.colours, disp.max = 2, disp.min = -1.5,
+          angle = 90) + scale_fill_gradientn(colors = c("#440144FF", "#22A884FF","#FDE725FF")) + 
+  theme(axis.text.y = element_text(size = 15)) # low, med, high
+
+
+DoHeatmap(seu, features = AB, size= 6,slot = "scale.data", group.colors = clust.colours, disp.max = 1, disp.min = -1,
+          angle = 90) + scale_fill_gradientn(colors = c("#403891b2", "#de7065b2","#f7cb44b2")) + 
+  theme(axis.text.y = element_text(size = 15)) # low, med, high
+
+
+
+DoHeatmap(seu, features = AB, size= 6,slot = "scale.data", group.colors = clust.colours, disp.max = 1, disp.min = -1,
+          angle = 90) + scale_fill_gradientn(colors = c("#12206dff", "#de7065ff","#f9b641ff")) + 
+  theme(axis.text.y = element_text(size = 15)) # low, med, high
+
+
+DoHeatmap(seu, features = AB, size= 6,slot = "scale.data", group.colors = clust.colours, disp.max = 2, disp.min = -1,
+          angle = 90) + scale_fill_gradientn(colors = c("#0b41b5","#5ecc58","#faec70")) + 
+  theme(axis.text.y = element_text(size = 15)) # low, med, high
 
 ```
 
