@@ -132,7 +132,6 @@ flowset_retro <- harmonize(flowset, processing = 'retro',
 
 # now create the data frame from the flowset object using the CelltypeR function flowset_to_csv
 df <- flowset_to_csv(flowset_retro)
-
 # antibody markers, features in order to appear on the plots
 AB <- c("CD24","CD56","CD29","CD15","CD184","CD133","CD71","CD44","GLAST","AQP4","HepaCAM", "CD140a","O4")
 
@@ -148,7 +147,6 @@ plotdensity_flowset(flowset)
 plotdensity_flowset(flowset_biexp)
 plotdensity_flowset(flowset_align)
 plotdensity_flowset(flowset_retro)
-
 ```
 
 # Make the seurat object. 
